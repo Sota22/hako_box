@@ -116,6 +116,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .glyphs.c3 { grid-template-columns: repeat(3, 1fr); }
 .glyphs.c3 span { font-size: calc(var(--cell) * 0.235); }
 .glyphs .k { color: var(--accent); }
+/* 相手から取った駒の印：駒の根元の小さな菱形 */
+.turned-mark { position: absolute; bottom: 7%; left: 50%; width: calc(var(--cell) * 0.17); height: calc(var(--cell) * 0.17); margin-left: calc(var(--cell) * -0.085); background: var(--accent); transform: rotate(45deg); border: 1px solid var(--piece); }
+.turned-mark.inline { position: static; display: inline-block; margin: 0 4px; width: 9px; height: 9px; vertical-align: middle; flex: none; }
+.piece.turned .glyphs, .piece.turned .one { margin-bottom: calc(var(--cell) * 0.1); }
 .piece.sel { outline: none; }
 .cell.sel .piece { box-shadow: 0 0 0 2px var(--accent); background: linear-gradient(170deg, color-mix(in srgb, var(--piece) 80%, var(--accent)), var(--piece)); }
 .piece.collapsed { animation: observe 0.7s ease-out; }

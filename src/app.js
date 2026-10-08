@@ -201,6 +201,8 @@ function pieceEl(id, opts) {
   if (p.owner[id] !== bottom && !(opts && opts.upright)) el.classList.add('gote');
   if (pr) el.classList.add('prom');
   if (G.collapsed.has(id)) el.classList.add('collapsed');
+  // 相手から取った駒（元の陣営と今の持ち主が違う）には印を付ける
+  if ((id < 20 ? 0 : 1) !== p.owner[id]) { el.classList.add('turned'); el.appendChild(h('i', 'turned-mark')); }
   const n = POPCNT[m];
   if (n === 1) {
     const t = 31 - Math.clz32(m);
@@ -274,14 +276,14 @@ function renderHand(el, side) {
   const groups = new Map();
   for (let id = 0; id < 40; id++) {
     if (p.owner[id] !== side || p.pos[id] >= 0) continue;
-    const m = p.mask[id];
-    if (!groups.has(m)) groups.set(m, []);
-    groups.get(m).push(id);
+    const k = p.mask[id] | (id < 20 ? 0 : 256);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(id);
   }
   if (!groups.size) { el.appendChild(h('span', 'empty', '持ち駒なし')); return; }
-  const keys = [...groups.keys()].sort((a, b) => (POPCNT[a] - POPCNT[b]) || (b - a));
-  for (const m of keys) {
-    const ids = groups.get(m);
+  const keys = [...groups.keys()].sort((a, b) => (POPCNT[a & 255] - POPCNT[b & 255]) || ((b & 255) - (a & 255)) || (a - b));
+  for (const k of keys) {
+    const ids = groups.get(k), m = k & 255;
     const b = h('button', 'hand-piece');
     b.type = 'button';
     b.dataset.id = ids[0];
@@ -346,6 +348,13 @@ function renderInfo() {
       row.appendChild(c);
     }
     box.appendChild(row);
+    const army = id < 20 ? 0 : 1;
+    if (army !== p.owner[id]) {
+      const r2 = h('div', 'row');
+      r2.appendChild(h('i', 'turned-mark inline'));
+      r2.appendChild(h('span', 'label', `${playerName(army)}から取った駒。${playerName(army)}の陣営の駒として正体が絞られます`));
+      box.appendChild(r2);
+    }
   } else {
     // 玉の候補の数
     p.prune();
@@ -502,6 +511,7 @@ function showRules() {
     <h3>取る・打つ・成る</h3>
     <ul>
       <li>取った駒は持ち駒になり、候補を残したまま打てます（玉にはなりません）。</li>
+      <li>駒は元の陣営を覚えています。取った駒には <i class="turned-mark inline"></i> の印が付き、動かすと元の陣営（相手側）の駒の候補だけが絞られます。</li>
       <li>敵陣に入る・出る・敵陣で動くときは成れます。成ると、成れない「玉・金」の候補が消えます。</li>
       <li>動けなくなる場所（1段目の歩・香、1〜2段目の桂）には、その種類としては行けません。</li>
       <li>二歩は「歩で確定している駒」がある筋にだけ適用されます。</li>

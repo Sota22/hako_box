@@ -126,7 +126,7 @@ class Pos {
     this.dm = new Uint8Array(81);
     this.tl = new Int8Array(81);
     this.tc = 0;
-    this.seen = new Uint8Array(256);
+    this.seen = new Uint8Array(512);
     this.att = [new Uint8Array(81), new Uint8Array(81)];
     this.side = 0;
     this.h1 = 0; this.h2 = 0;
@@ -378,9 +378,10 @@ class Pos {
         seen.fill(0);
         for (let id = 0; id < 40; id++) {
           if (owner[id] !== s || pos[id] >= 0) continue;
-          const m = pr[id];
-          if (seen[m]) continue;
-          seen[m] = 1;
+          // 同じ候補でも元の陣営が違えば別の駒として扱う
+          const m = pr[id], key = m | (id < 20 ? 0 : 256);
+          if (seen[key]) continue;
+          seen[key] = 1;
           for (let sq = 0; sq < 81; sq++) {
             if (board[sq] >= 0) continue;
             const rel = s === 0 ? ROW[sq] : 8 - ROW[sq];
