@@ -327,6 +327,7 @@ function renderStatus() {
     pct = 50 + 50 * Math.tanh(sc / 1500);
   }
   meter.style.width = pct.toFixed(1) + '%';
+  $('#meter').hidden = G.mode !== 'ai';
   $('#meter').title = 'あなたから見た形勢（AIの読み）';
 }
 
