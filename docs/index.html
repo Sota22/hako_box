@@ -740,7 +740,7 @@ for (let pr = 0; pr < 2; pr++) {
 }
 const PARAMS = {
   flex: 0.25,      // 重ね合わせの柔軟性ボーナス（最大値との差の割合）
-  hand: 1.10,      // 持ち駒の倍率
+  hand: 1.0,       // 持ち駒の倍率
   mob: 3,          // 利き1升あたり
   kc: [900, 330, 150, 75, 38, 18, 8, 3, 0],                 // 玉候補の数ごとのペナルティ
   kAtt: [0, 0, 160, 75, 38, 20, 10, 6, 4, 2],               // 玉候補が攻撃されているときのペナルティ
@@ -996,18 +996,22 @@ class Searcher {
       }
     }
 
-    // ヌルムーブ枝刈り
-    if (!pv && !danger && allowNull && depth >= 3 && ply > 0) {
-      const ev = this.evaluate(beta - 1, beta);
-      if (ev >= beta) {
+    let ev = 0, canFut = false;
+    if (!pv && !danger && ply > 0 && Math.abs(beta) < WIN - 1000) {
+      ev = this.evaluate();
+      // 静的評価が beta を大きく上回るなら打ち切る（リバース・フューティリティ）
+      if (depth <= 3 && ev - RFP_MARGIN * depth >= beta) return ev - RFP_MARGIN * depth;
+      canFut = depth <= 2 && ev + FUT_MARGIN * depth <= alpha;
+      // ヌルムーブ枝刈り
+      if (allowNull && depth >= 3 && ev >= beta) {
         p.makeNull();
         const r = depth >= 7 ? 3 : 2;
         const v = -this.search(depth - 1 - r, -beta, -beta + 1, ply + 1, false);
         p.unmakeNull();
         if (this.stop) return 0;
         if (v >= beta) return v >= WIN - 1000 ? beta : v;
+        p.prune();
       }
-      p.prune();
     }
 
     const off = ply * 3000;
@@ -1021,6 +1025,7 @@ class Searcher {
       const m = this.pick(i, off + n);
       const to = (m >> 6) & 127;
       const isCap = p.board[to] >= 0;
+      if (canFut && searched > 0 && !isCap && !((m >> 13) & 1)) continue;
       if (p.make(m)) {
         p.unmake();
         best = WIN - ply - 1; bestMove = m;
@@ -1135,7 +1140,7 @@ class Searcher {
   }
 }
 
-const INF = 1 << 30, WIN = 10000000, LAZY = 400;
+const INF = 1 << 30, WIN = 10000000, LAZY = 400, RFP_MARGIN = 220, FUT_MARGIN = 200;
 const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
 
 const QS = {
