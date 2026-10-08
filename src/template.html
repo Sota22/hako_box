@@ -1,0 +1,43 @@
+<title>量子将棋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/*STYLE*/
+</style>
+<div class="app">
+  <header class="top">
+    <div class="brand"><h1>量子将棋</h1><span class="sub">正体不明の駒で指す将棋</span></div>
+    <div class="top-actions">
+      <button type="button" class="btn" id="rules">ルール</button>
+      <button type="button" class="btn primary" id="new">新規</button>
+    </div>
+  </header>
+  <div class="status">
+    <span class="turn-pill" id="turn">▲先手</span>
+    <span class="msg" id="msg"></span>
+    <span class="meter" id="meter" aria-hidden="true"><i></i></span>
+  </div>
+  <div class="hand" id="hand-top"></div>
+  <div class="board-wrap">
+    <div class="files" id="files"></div>
+    <div class="board" id="board"></div>
+    <div class="ranks" id="ranks"></div>
+  </div>
+  <div class="hand" id="hand-bottom"></div>
+  <div class="info" id="info"></div>
+  <div class="controls">
+    <button type="button" class="btn" id="undo">待った</button>
+    <button type="button" class="btn" id="flip">盤を反転</button>
+  </div>
+  <details class="log">
+    <summary>棋譜（<span id="log-count">0</span>手）</summary>
+    <ol id="log-list"></ol>
+  </details>
+</div>
+<script id="qs-engine">
+/*ENGINE*/
+</script>
+<script>
+/*APP*/
+</script>
