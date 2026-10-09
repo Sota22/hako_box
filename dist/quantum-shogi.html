@@ -565,9 +565,10 @@ class Pos {
         const base = id | to << 6;
         if (isP) { out[n++] = base | M << 14; continue; }
         const rel = s === 0 ? ROW[to] : 8 - ROW[to];
-        let Mn = M;
-        if (rel === 0) Mn &= ~(BP | BL | BN); else if (rel === 1) Mn &= ~BN;
-        if (Mn) out[n++] = base | Mn << 14;
+        // 行き所のない駒になる種類しか候補がなければ、成らずには行けない。
+        // 他の候補があれば行けるが、場所を理由に候補は絞らない（正体は動きでだけ絞られる）。
+        const dead = rel === 0 ? (BP | BL | BN) : rel === 1 ? BN : 0;
+        if (M & ~dead) out[n++] = base | M << 14;
         if (rel <= 2 || relFrom <= 2) {
           const Mp = M & PROMOTABLE;
           if (Mp) out[n++] = base | 1 << 13 | Mp << 14;
@@ -592,11 +593,11 @@ class Pos {
           seen[key] = 1;
           for (let sq = 0; sq < 81; sq++) {
             if (board[sq] >= 0) continue;
+            // 打つときも候補は絞らない。全ての候補が打てない種類のときだけ禁止。
             const rel = s === 0 ? ROW[sq] : 8 - ROW[sq];
-            let M = m;
-            if (rel === 0) M &= ~(BP | BL | BN); else if (rel === 1) M &= ~BN;
-            if (pawnFiles >> COL[sq] & 1) M &= ~BP;
-            if (M) out[n++] = id | sq << 6 | M << 14;
+            let dead = rel === 0 ? (BP | BL | BN) : rel === 1 ? BN : 0;
+            if (pawnFiles >> COL[sq] & 1) dead |= BP; // 二歩は歩と確定した駒を打つときだけ
+            if (m & ~dead) out[n++] = id | sq << 6 | m << 14;
           }
         }
       }
@@ -1665,8 +1666,9 @@ function showRules() {
       <li>取った駒は持ち駒になり、候補を残したまま打てます（玉にはなりません）。</li>
       <li>駒は元の陣営を覚えています。取った駒には <i class="turned-mark inline"></i> の印が付き、動かすと元の陣営（相手側）の駒の候補だけが絞られます。</li>
       <li>敵陣に入る・出る・敵陣で動くときは成れます。成ると、成れない「玉・金」の候補が消えます。</li>
-      <li>動けなくなる場所（1段目の歩・香、1〜2段目の桂）には、その種類としては行けません。</li>
-      <li>二歩は「歩で確定している駒」がある筋にだけ適用されます。</li>
+      <li>正体は動かしたときだけ絞られます。打った場所や行った場所を理由に候補が消えることはありません。</li>
+      <li>動けなくなる場所（1段目の歩・香、1〜2段目の桂）にも、ほかの候補があれば打ったり成らずに行ったりできます。後で歩などと確定したら、その駒はそこから動けません。候補が全部そういう駒なら、そこへは成らないと行けません。</li>
+      <li>二歩は、歩と確定した駒を、歩と確定した駒がある筋に打つときだけ禁止です。</li>
     </ul>
     <h3>勝ち負け</h3>
     <ul>

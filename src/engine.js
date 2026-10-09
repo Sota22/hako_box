@@ -357,9 +357,10 @@ class Pos {
         const base = id | to << 6;
         if (isP) { out[n++] = base | M << 14; continue; }
         const rel = s === 0 ? ROW[to] : 8 - ROW[to];
-        let Mn = M;
-        if (rel === 0) Mn &= ~(BP | BL | BN); else if (rel === 1) Mn &= ~BN;
-        if (Mn) out[n++] = base | Mn << 14;
+        // 行き所のない駒になる種類しか候補がなければ、成らずには行けない。
+        // 他の候補があれば行けるが、場所を理由に候補は絞らない（正体は動きでだけ絞られる）。
+        const dead = rel === 0 ? (BP | BL | BN) : rel === 1 ? BN : 0;
+        if (M & ~dead) out[n++] = base | M << 14;
         if (rel <= 2 || relFrom <= 2) {
           const Mp = M & PROMOTABLE;
           if (Mp) out[n++] = base | 1 << 13 | Mp << 14;
@@ -384,11 +385,11 @@ class Pos {
           seen[key] = 1;
           for (let sq = 0; sq < 81; sq++) {
             if (board[sq] >= 0) continue;
+            // 打つときも候補は絞らない。全ての候補が打てない種類のときだけ禁止。
             const rel = s === 0 ? ROW[sq] : 8 - ROW[sq];
-            let M = m;
-            if (rel === 0) M &= ~(BP | BL | BN); else if (rel === 1) M &= ~BN;
-            if (pawnFiles >> COL[sq] & 1) M &= ~BP;
-            if (M) out[n++] = id | sq << 6 | M << 14;
+            let dead = rel === 0 ? (BP | BL | BN) : rel === 1 ? BN : 0;
+            if (pawnFiles >> COL[sq] & 1) dead |= BP; // 二歩は歩と確定した駒を打つときだけ
+            if (m & ~dead) out[n++] = id | sq << 6 | m << 14;
           }
         }
       }
