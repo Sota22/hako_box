@@ -33,6 +33,8 @@ const G = {
   info: null,      // AIの読み
   flip: false,
   collapsed: new Set(),
+  hint: null,      // {move, score, depth} おすすめの一手
+  hinting: false,  // ヒントを考え中
 };
 
 function sqName(sq) { return FILE[sq % 9] + RANK[(sq / 9) | 0]; }
@@ -64,6 +66,7 @@ function isHumanTurn() {
 
 function afterPosition() {
   G.sel = null;
+  G.hint = null;
   G.legal = G.over ? [] : G.pos.legalMoves();
   if (!G.over && G.legal.length === 0) {
     G.over = { winner: G.pos.side ^ 1, reason: '指せる手がなくなりました' };
@@ -120,7 +123,11 @@ function makeWorker() {
     const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
     worker = new Worker(url);
     worker.onmessage = onWorkerMessage;
-    worker.onerror = () => { worker = null; workerFailed = true; if (G.thinking) { G.thinking = false; startThink(); } };
+    worker.onerror = () => {
+      worker = null; workerFailed = true;
+      if (G.thinking) { G.thinking = false; startThink(); }
+      else if (G.hinting) { G.hinting = false; startThink('hint'); }
+    };
   } catch (e) {
     workerFailed = true; worker = null;
   }
@@ -134,18 +141,19 @@ self.onmessage = function (e) {
   P.load(d.state);
   for (const x of d.hist) P.pushHistory(x[0], x[1]);
   S.setPos(P);
-  const r = S.think(d.time, 40, function (i) { self.postMessage({ type: 'info', id: d.id, info: { depth: i.depth, score: i.score, nodes: i.nodes } }); });
-  self.postMessage({ type: 'done', id: d.id, move: r.move, score: r.score, depth: r.depth, nodes: r.nodes });
+  const r = S.think(d.time, 40, function (i) { self.postMessage({ type: 'info', id: d.id, kind: d.kind, info: { depth: i.depth, score: i.score, nodes: i.nodes } }); });
+  self.postMessage({ type: 'done', id: d.id, kind: d.kind, move: r.move, score: r.score, depth: r.depth, nodes: r.nodes });
 };`;
 
 let mainSearcher = null;
-function startThink() {
-  if (G.thinking || G.over) return;
-  G.thinking = true;
-  G.info = null;
+function startThink(kind) {
+  if (G.thinking || G.hinting || G.over) return;
+  kind = kind || 'ai';
+  if (kind === 'hint') { G.hinting = true; G.hint = null; } else { G.thinking = true; G.info = null; }
   const id = ++thinkId;
   const msg = {
-    id, state: G.pos.serialize(), time: LEVELS[G.level].ms,
+    id, kind, state: G.pos.serialize(),
+    time: kind === 'hint' ? Math.min(Math.max(LEVELS[G.level].ms, 2500), 5000) : LEVELS[G.level].ms, // ヒントは2.5〜5秒
     hist: G.snaps.map(s => [s.h1, s.h2]),
   };
   render();
@@ -158,13 +166,24 @@ function startThink() {
     for (const x of msg.hist) p.pushHistory(x[0], x[1]);
     if (!mainSearcher) mainSearcher = new E.Searcher(p, 18); else mainSearcher.setPos(p);
     const r = mainSearcher.think(Math.min(msg.time, 4000), 40);
-    onWorkerMessage({ data: { type: 'done', id, move: r.move, score: r.score, depth: r.depth } });
+    onWorkerMessage({ data: { type: 'done', id, kind, move: r.move, score: r.score, depth: r.depth } });
   }, 60);
 }
 function onWorkerMessage(e) {
   const d = e.data;
   if (d.id !== thinkId) return;
-  if (d.type === 'info') { G.info = d.info; renderStatus(); return; }
+  if (d.type === 'info') {
+    if (d.kind !== 'hint' && G.thinking) G.info = d.info;
+    if (G.hinting) G.hintDepth = d.info.depth;
+    renderStatus();
+    return;
+  }
+  if (d.kind === 'hint') {
+    G.hinting = false;
+    if (d.move && G.legal.includes(d.move)) G.hint = { move: d.move, score: d.score, depth: d.depth };
+    render();
+    return;
+  }
   G.thinking = false;
   G.info = { depth: d.depth, score: d.score };
   if (!d.move || G.over) { render(); return; }
@@ -172,8 +191,28 @@ function onWorkerMessage(e) {
 }
 function cancelThink() {
   thinkId++;
-  if (G.thinking && worker) { worker.terminate(); worker = null; }
+  if ((G.thinking || G.hinting) && worker) { worker.terminate(); worker = null; }
   G.thinking = false;
+  G.hinting = false;
+}
+
+function requestHint() {
+  if (!isHumanTurn() || G.thinking || G.hinting) return;
+  if (G.hint) { G.hint = null; render(); return; } // もう一度押すと消す
+  G.sel = null;
+  G.hintDepth = 0;
+  startThink('hint');
+}
+
+// 手の説明（ヒント用）
+function describeMove(m) {
+  const p = G.pos, d = E.decode(m), from = p.pos[d.id];
+  const prom = d.prom || p.prom[d.id];
+  const where = from < 0
+    ? `持ち駒を${sqName(d.to)}に打つ`
+    : `${sqName(from)}の駒を${sqName(d.to)}へ${d.prom ? '（成る）' : ''}`;
+  const cap = p.board[d.to] >= 0 ? '　相手の駒を取る' : '';
+  return { where: where + cap, chars: maskChars(d.mask, prom).join(' '), mark: MARK[p.side] + sqName(d.to) + (from < 0 ? '打' : '') + (d.prom ? '成' : '') };
 }
 
 // ---- 保存 ----
@@ -238,6 +277,8 @@ function render() {
   const last = G.snaps[G.snaps.length - 1].move;
   const danger = dangerSquares();
   const sel = G.sel;
+  let hint = null;
+  if (G.hint) { const d = E.decode(G.hint.move); hint = { from: p.pos[d.id], to: d.to }; }
   for (let i = 0; i < 81; i++) {
     const sq = G.flip ? 80 - i : i;
     const c = h('button', 'cell');
@@ -252,6 +293,10 @@ function render() {
       if (sel && sel.id === id) c.classList.add('sel');
     }
     if (sel && sel.targets.has(sq)) { c.classList.add('dest'); if (id >= 0) c.classList.add('cap'); }
+    if (hint) {
+      if (hint.to === sq) c.classList.add('hint-to');
+      if (hint.from === sq) c.classList.add('hint-from');
+    }
     board.appendChild(c);
   }
   $('#files').textContent = '';
@@ -264,6 +309,10 @@ function render() {
   renderInfo();
   renderLog();
   $('#undo').disabled = G.snaps.length <= 1;
+  const hb = $('#hint');
+  hb.disabled = !isHumanTurn() || G.thinking || G.hinting;
+  hb.textContent = G.hinting ? '考え中…' : G.hint ? 'ヒントを消す' : 'ヒント';
+  hb.classList.toggle('on', !!G.hint);
   if (G.over && !G.shownOver) { G.shownOver = true; showResult(); }
   if (!G.over) G.shownOver = false;
 }
@@ -291,6 +340,7 @@ function renderHand(el, side) {
     b.appendChild(pieceEl(ids[0], { upright: true }));
     if (ids.length > 1) b.appendChild(h('span', 'cnt', String(ids.length)));
     if (G.sel && ids.includes(G.sel.id)) b.classList.add('sel');
+    if (G.hint && ids.includes(G.hint.move & 63)) b.classList.add('hint-from');
     el.appendChild(b);
   }
 }
@@ -315,6 +365,7 @@ function renderStatus() {
     const d = dangerSquares();
     const k = p.kingOnly(p.side);
     if (k >= 0 && d.has(p.pos[k])) { msg.textContent = '玉が確定していて、取られそうです'; msg.classList.add('alert'); }
+    else if (G.hinting) msg.textContent = 'おすすめの手を探しています…' + (G.hintDepth ? `（${G.hintDepth}手先まで）` : '');
     else if (G.thinking) msg.textContent = 'AI が読んでいます…' + (G.info ? `（${G.info.depth}手先まで）` : '');
     else if (G.sel) msg.textContent = '動かす先を選んでください';
     else msg.textContent = isHumanTurn() ? '駒を選んでください' : '';
@@ -338,6 +389,31 @@ function renderInfo() {
   box.textContent = '';
   const p = G.pos;
   const row = h('div', 'row');
+  if (G.hint && !G.sel) {
+    const d = describeMove(G.hint.move);
+    const r1 = h('div', 'row hint-row');
+    r1.appendChild(h('span', 'hint-tag', 'おすすめ'));
+    r1.appendChild(h('span', 'hint-move', d.mark));
+    r1.appendChild(h('span', 'label', d.where));
+    box.appendChild(r1);
+    const r2 = h('div', 'row');
+    r2.appendChild(h('span', 'label', '指した後の正体の候補'));
+    for (const c of d.chars.split(' ')) r2.appendChild(h('span', 'chip', c));
+    box.appendChild(r2);
+    const r3 = h('div', 'row');
+    const sc = G.hint.score;
+    let verdict;
+    if (sc > 900000) verdict = 'この手で勝ちが見えています';
+    else if (sc < -900000) verdict = '苦しい局面です。いちばん粘れる手を選びました';
+    else verdict = `${G.hint.depth}手先まで読んだ結果です`;
+    r3.appendChild(h('span', 'label', verdict));
+    const go = h('button', 'btn primary small', 'この手を指す');
+    go.type = 'button';
+    go.onclick = () => { if (G.hint && isHumanTurn()) play(G.hint.move); };
+    r3.appendChild(go);
+    box.appendChild(r3);
+    return;
+  }
   if (G.sel) {
     const id = G.sel.id;
     row.appendChild(h('span', 'label', p.pos[id] < 0 ? '持ち駒の正体の候補' : 'この駒の正体の候補'));
@@ -569,6 +645,7 @@ function start(data) {
   $('#new').onclick = showNewGame;
   $('#rules').onclick = showRules;
   $('#undo').onclick = undo;
+  $('#hint').onclick = requestHint;
   $('#flip').onclick = () => { G.flip = !G.flip; render(); };
   window.addEventListener('resize', layout);
   if (loadSaved(data && data.game)) {

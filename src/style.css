@@ -17,6 +17,8 @@
   --last: rgba(90, 72, 212, 0.26);
   --danger: #c62828;
   --good: #2e7d32;
+  --hint: #0f7d62;
+  --hint-soft: rgba(15, 125, 98, 0.18);
   --shadow: rgba(40, 30, 10, 0.28);
   --f-piece: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
   --f-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
@@ -27,7 +29,7 @@
     --bg: #11131a; --surface: #1a1d27; --ink: #e7e9f1; --muted: #9ba2b6; --line: #2d3142;
     --board: #c99f55; --board-line: #3c2a0e; --piece: #f0dfb8; --piece-edge: #8f6c30; --piece-ink: #1d1409;
     --prom: #b3261e; --accent: #9b8bff; --accent-ink: #12101f; --accent-soft: rgba(155, 139, 255, 0.2);
-    --last: rgba(155, 139, 255, 0.34); --danger: #ff6b6b; --good: #7bd389; --shadow: rgba(0, 0, 0, 0.5);
+    --last: rgba(155, 139, 255, 0.34); --danger: #ff6b6b; --good: #7bd389; --hint: #4fd1a8; --hint-soft: rgba(79, 209, 168, 0.22); --shadow: rgba(0, 0, 0, 0.5);
     color-scheme: dark;
   }
 }
@@ -35,7 +37,7 @@
   --bg: #11131a; --surface: #1a1d27; --ink: #e7e9f1; --muted: #9ba2b6; --line: #2d3142;
   --board: #c99f55; --board-line: #3c2a0e; --piece: #f0dfb8; --piece-edge: #8f6c30; --piece-ink: #1d1409;
   --prom: #b3261e; --accent: #9b8bff; --accent-ink: #12101f; --accent-soft: rgba(155, 139, 255, 0.2);
-  --last: rgba(155, 139, 255, 0.34); --danger: #ff6b6b; --good: #7bd389; --shadow: rgba(0, 0, 0, 0.5);
+  --last: rgba(155, 139, 255, 0.34); --danger: #ff6b6b; --good: #7bd389; --hint: #4fd1a8; --hint-soft: rgba(79, 209, 168, 0.22); --shadow: rgba(0, 0, 0, 0.5);
   color-scheme: dark;
 }
 
@@ -97,6 +99,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .cell.from { background: var(--accent-soft); }
 .cell.dest::after { content: ""; position: absolute; width: 28%; height: 26%; border-radius: 50%; background: var(--accent); opacity: 0.75; pointer-events: none; }
 .cell.dest.cap::after { width: 86%; height: 86%; background: transparent; border: 3px solid var(--accent); opacity: 0.9; }
+/* ヒント：おすすめの手の移動元と移動先 */
+.cell.hint-from { box-shadow: inset 0 0 0 2px var(--hint); }
+.cell.hint-to { box-shadow: inset 0 0 0 3px var(--hint); background: var(--hint-soft); }
+.hand-piece.hint-from .piece { outline: 2px dashed var(--hint); outline-offset: 1px; }
 .cell.danger .piece { box-shadow: 0 0 0 2px var(--danger), 0 1px 2px var(--shadow); }
 
 /* 駒（五角形） */
@@ -140,6 +146,11 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .controls { display: flex; gap: 6px; flex-wrap: wrap; }
 .controls .btn { flex: 1 1 0; min-width: 0; }
+.controls .btn.on { border-color: var(--hint); color: var(--hint); }
+.btn.small { padding: 4px 10px; font-size: 12px; margin-left: auto; }
+.hint-row { gap: 8px; }
+.hint-tag { font-size: 11px; font-weight: 700; color: var(--bg); background: var(--hint); border-radius: 99px; padding: 2px 8px; }
+.hint-move { font-family: var(--f-piece); font-weight: 800; font-size: 17px; }
 
 details.log { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
 details.log summary { cursor: pointer; font-size: 13px; color: var(--muted); }
