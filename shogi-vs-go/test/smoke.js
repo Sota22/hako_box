@@ -3,10 +3,10 @@ const SG = require('../src/engine.js');
 let rng = 12345; const r = n => { rng = (rng * 1103515245 + 12345) & 0x7fffffff; return rng % n; };
 const p0 = new SG.Pos();
 console.log('initial legal', p0.legalMoves().length, 'side', p0.side);
-let games = 0, plies = 0; const res = { shogi: 0, go: 0, noMove: [0, 0] };
+let games = 0, plies = 0; const res = { shogi: 0, go: 0, area: 0, noMove: [0, 0] };
 const t0 = Date.now();
 for (let g = 0; g < 400; g++) {
-  const q = new SG.Pos({ goal: 30, first: g % 2, perTurn: 1 + (g % 3 > 0 ? 1 : 0), eatChain: g % 5 !== 0 });
+  const q = new SG.Pos({ goal: 40, supply: g % 4 ? 100 : 999, first: g % 2, perTurn: 1 + (g % 3 > 0 ? 1 : 0), eatChain: g % 5 !== 0 });
   const init = JSON.stringify(q.serialize());
   for (let k = 0; k < 600; k++) {
     const mv = q.legalMoves();
@@ -21,7 +21,12 @@ for (let g = 0; g < 400; g++) {
     for (let sq = 0; sq < 81; sq++) if (q.board[sq] && q.libertyCount(sq) === 0) throw new Error('group without liberty at ' + sq);
     let st = 0, king = -1; for (let sq = 0; sq < 81; sq++) { if (q.board[sq] === SG.STONE) st++; if (q.board[sq] === SG.K) king = sq; }
     if (st !== q.stones || king !== q.kingSq) throw new Error('count mismatch');
-    if (w > 0) { if (s === SG.SHOGI) { if (q.caps < q.goal) throw new Error('bad shogi win'); res.shogi++; } else { if (king >= 0) throw new Error('bad go win'); res.go++; } break; }
+    if (w === 2) { if (s !== SG.GO || q.placed < q.supply || q.areaWinner() !== SG.SHOGI) throw new Error('bad area loss'); res.shogi++; res.area++; break; }
+    if (w === 1) {
+      if (s === SG.SHOGI) { if (q.caps < q.goal) throw new Error('bad shogi win'); res.shogi++; }
+      else { if (king >= 0 && q.placed < q.supply) throw new Error('bad go win'); if (king >= 0) res.area++; res.go++; }
+      break;
+    }
   }
   while (q.usp > 0) q.unmake();
   if (JSON.stringify(q.serialize()) !== init) throw new Error('unmake mismatch');

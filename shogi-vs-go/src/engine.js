@@ -101,9 +101,13 @@ const HANDICAPS = {
 // 置き石（囲碁側のハンデ）
 const STAR = { 0: [], 1: [22], 2: [20, 24], 3: [20, 24, 22], 4: [20, 24, 38, 42] };
 
+// 勝ち負け: 囲碁側は玉を取れば勝ち。将棋側は石を goal 個取れば勝ち。
+// 囲碁側が手番の初めに置ける升がなければ終局し、地を数えて多い方の勝ち。将棋側は動かせる駒がなければ負け。
 // goal: 将棋側の勝ちに必要な石の数, perTurn: 囲碁側が1手番に置く石の数,
 // firstTurn: 囲碁側が先手のときの最初の手番に置く数, eatChain: つながった石も駒で取れるか
-const DEFAULT_RULES = { goal: 30, first: GO, perTurn: 2, firstTurn: 1, eatChain: true, handicap: 'none', stones: 0 };
+// supply: 囲碁側の碁笥の石の数。置き終わったら終局して地を数える
+// take: 囲碁側の勝ちに必要な駒の数（99 は使わない。玉を取ればその時点で勝ち）
+const DEFAULT_RULES = { goal: 37, supply: 100, take: 99, first: GO, perTurn: 2, firstTurn: 1, eatChain: true, handicap: 'none', stones: 0 };
 
 const MAXUNDO = 1 << 16;
 class Pos {
@@ -121,6 +125,8 @@ class Pos {
   setRules(rules) {
     this.rules = Object.assign({}, DEFAULT_RULES, rules || {});
     this.goal = this.rules.goal;
+    this.take = this.rules.take;
+    this.supply = this.rules.supply;
     this.perTurn = this.rules.perTurn;
     this.eatChain = !!this.rules.eatChain;
   }
@@ -135,7 +141,7 @@ class Pos {
     this.kingSq = 76;
     this.side = this.rules.first;
     this.left = this.side === GO ? this.rules.firstTurn : 0;
-    this.caps = 0; this.placed = this.stones; this.dead.fill(0);
+    this.caps = 0; this.placed = 0; this.dead.fill(0); this.lost = 0;
     this.usp = 0;
     this.rehash();
   }
@@ -159,6 +165,7 @@ class Pos {
     this.board.set(o.board);
     this.side = o.side; this.left = o.left || 0; this.caps = o.caps; this.placed = o.placed || 0;
     this.dead.fill(0); if (o.dead) this.dead.set(o.dead);
+    this.lost = 0; for (let i = 0; i < 32; i++) this.lost += this.dead[i];
     this.stones = 0; this.kingSq = -1;
     for (let s = 0; s < 81; s++) { if (this.board[s] === STONE) this.stones++; else if (this.board[s] === K) this.kingSq = s; }
     this.usp = 0;
@@ -245,7 +252,7 @@ class Pos {
     this.usp = usp; this.h1 = h1; this.h2 = h2;
   }
 
-  // 1手指す。戻り値: -1 不正（自殺手）, 0 通常, 1 指した側の勝ち
+  // 1手指す。戻り値: -1 不正（自殺手）, 0 通常, 1 指した側の勝ち, 2 指した側の負け（碁笥の石が尽きて地で負け）
   make(m) {
     const b = this.board, u = this.u;
     const from = m & 127, to = (m >> 7) & 127;
@@ -270,9 +277,12 @@ class Pos {
             if (pc === K) { win = 1; this.kingSq = -1; }
             this.dead[pc > PROM ? pc - PROM : pc]++;
           }
-          this._remove(n); removed += n;
+          this._remove(n); removed += n; this.lost += n;
         }
       }
+      if (this.lost >= this.take) win = 1;
+      // 碁笥の石を置き終えたら終局して地を数える
+      if (!win && this.placed >= this.supply) win = this.areaWinner() === GO ? 1 : 2;
       if (!removed && !this.hasLiberty(to)) {
         b[to] = 0; this.stones--; this.placed--;
         this.h1 = h1p; this.h2 = h2p; this.usp = base;
@@ -336,7 +346,7 @@ class Pos {
     for (let i = 0; i < removed; i++) {
       const x = u[--this.usp], s = x & 255, c = x >> 8;
       b[s] = c;
-      if (goMv) this.dead[c > PROM ? c - PROM : c]--;
+      if (goMv) { this.dead[c > PROM ? c - PROM : c]--; this.lost--; }
     }
     if (m !== END_TURN) {
       if (goMv) { b[to] = 0; this.placed--; }
@@ -414,6 +424,33 @@ class Pos {
 
   // 玉の連の呼吸点（玉が無ければ -1）
   kingLiberties() { return this.kingSq < 0 ? -1 : this.libertyCount(this.kingSq); }
+
+  // 地を数える（囲碁の数え方）: 自分の石・駒 ＋ 自分だけに囲まれた空き升
+  area() {
+    const b = this.board, seen = new Uint8Array(81);
+    let go = 0, shogi = 0;
+    for (let s = 0; s < 81; s++) {
+      const c = b[s];
+      if (c === STONE) { go++; continue; }
+      if (c) { shogi++; continue; }
+      if (seen[s]) continue;
+      // 空き升のかたまりが、石と駒のどちらに接しているか
+      const st = [s]; seen[s] = 1;
+      let n = 0, tg = false, ts = false;
+      while (st.length) {
+        const x = st.pop(); n++;
+        for (const t of NEI[x]) {
+          const tc = b[t];
+          if (tc === 0) { if (!seen[t]) { seen[t] = 1; st.push(t); } }
+          else if (tc === STONE) tg = true; else ts = true;
+        }
+      }
+      if (tg && !ts) go += n; else if (ts && !tg) shogi += n;
+    }
+    return { go, shogi };
+  }
+  // 囲碁側が置けずに終局したときの勝者
+  areaWinner() { const a = this.area(); return a.go > a.shogi ? GO : SHOGI; }
 }
 
 // ---- AI -----------------------------------------------------------------
@@ -425,6 +462,11 @@ VAL[P + PROM] = 460; VAL[L + PROM] = 440; VAL[N + PROM] = 440; VAL[S + PROM] = 4
 const PARAMS = {
   cap: 120,                     // 取った石1つ
   near: [0, 9000, 1200, 520, 240, 110, 40],  // あと k 個で勝ちのときの上乗せ
+  nearTake: [0, 9000, 1200, 520, 240, 110, 40], // 囲碁側があと k 枚で勝ちのとき
+  lostV: 0,                     // 取られた駒1枚（駒の価値とは別に）
+  gl: [0, 0, 0, 0],             // 呼吸点が 1,2,3 の石の連（石1つあたり、将棋側の得点）
+  race: 50,                     // 碁笥が尽きるまでの手番数 − 将棋側があと取る石の数 − raceOff
+  raceOff: 10,
   kl: [0, 1600, 560, 230, 95, 35, 10],      // 玉の連の呼吸点が少ないときの減点（囲碁側が1手番で詰められる数を引いた値で引く）
   mob: 3,                       // 駒の動ける升の数
   eat: 16,                      // 取れる位置にある石
@@ -437,7 +479,7 @@ const PARAMS = {
   goTempo: 40,                  // 囲碁側の手番で置ける残り石1つあたり
   tempo: 10,
   // AI が持つ側ごとの上書き（自己対局で強くなった値）
-  bySide: [{ kspace: 8 }, {}],
+  bySide: [{ kspace: 8 }, { gl: [0, 160, 64, 20] }],
 };
 
 const INF = 1 << 30, WIN = 10000000;
@@ -580,11 +622,20 @@ class Searcher {
     let e = P.cap * p.caps;
     const left = p.goal - p.caps;
     if (left < P.near.length) e += P.near[left];
+    const tl = p.take - p.lost;
+    if (tl < P.nearTake.length) e -= P.nearTake[tl];
+    e -= P.lostV * p.lost;
+    if (p.supply < 999) {
+      let d = (p.supply - p.placed) / p.perTurn - left - P.raceOff;
+      if (d > 20) d = 20; else if (d < -20) d = -20;
+      e += P.race * d;
+    }
     const reach = this.goReach();
     let kl = 99;
     const kg = p.kingSq >= 0 ? this.gid[p.kingSq] : -1;
+    const gl = P.gl;
     for (let g = 0; g < this.ng; g++) {
-      if (this.gStone[g]) continue;
+      if (this.gStone[g]) { const lb = this.gLibs[g]; if (lb < 4) e += gl[lb] * this.gSize[g]; continue; }
       e += this.gVal[g];
       if (g === kg) kl = this.gLibs[g];
       else if (this.gLibs[g] <= reach) e -= P.pieceLib + (this.gVal[g] >> 2);
@@ -732,7 +783,8 @@ class Searcher {
       const r = p.make(m);
       if (r < 0) continue;
       legal++;
-      if (r > 0) { p.unmake(); return WIN - ply - 1; }
+      if (r === 1) { p.unmake(); return WIN - ply - 1; }
+      if (r === 2) { p.unmake(); if (-WIN + ply + 1 > best) best = -WIN + ply + 1; continue; }
       const v = this.child(0, alpha, beta, ply + 1, side, true, qd + 1);
       p.unmake();
       if (this.stop) return 0;
@@ -786,10 +838,16 @@ class Searcher {
       const sc = this.scoreBuf[i];
       const r = p.make(m);
       if (r < 0) continue;
-      if (r > 0) {
+      if (r === 1) {
         p.unmake();
         best = WIN - ply - 1; bestMove = m;
         break;
+      }
+      if (r === 2) {
+        p.unmake();
+        searched++;
+        if (-WIN + ply + 1 > best) { best = -WIN + ply + 1; bestMove = m; }
+        continue;
       }
       const tactical = sc >= (1 << 20);
       let v;
@@ -827,13 +885,14 @@ class Searcher {
       }
     }
     if (searched === 0 && best === -INF) {
-      // 指せる手が無い: 囲碁側の2つ目以降なら手番を終える、それ以外は負け
+      // 指せる手が無い: 囲碁側の2つ目以降なら手番を終える。囲碁側の手番の初めなら地を数えて終局。将棋側は負け
       if (side === GO && p.left < p.perTurn) {
         p.make(END_TURN);
         const v = -this.search(depth - 1, -beta, -alpha, ply + 1);
         p.unmake();
         return v;
       }
+      if (side === GO && p.areaWinner() === GO) return WIN - ply;
       return -WIN + ply;
     }
     const flag = best >= beta ? 2 : best > alpha0 ? 1 : 3;
@@ -851,9 +910,9 @@ class Searcher {
     this.killers.fill(0);
     for (let k = 0; k < this.history.length; k++) this.history[k] >>= 2;
     const legal = p.legalMoves();
-    if (legal.length === 0) return { move: 0, score: -WIN, depth: 0, nodes: 0 };
+    if (legal.length === 0) return { move: 0, score: p.side === GO && p.areaWinner() === GO ? WIN : -WIN, depth: 0, nodes: 0 };
     for (const m of legal) {
-      if (p.make(m) > 0) { p.unmake(); return { move: m, score: WIN, depth: 1, nodes: 1 }; }
+      if (p.make(m) === 1) { p.unmake(); return { move: m, score: WIN, depth: 1, nodes: 1 }; }
       p.unmake();
     }
     if (legal.length === 1) return { move: legal[0], score: 0, depth: 0, nodes: 1 };

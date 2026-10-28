@@ -19,8 +19,8 @@ const HANDI = [
   { k: 'lance', label: '香落ち', note: '囲碁側を少し助ける', rules: { handicap: 'lance' } },
   { k: 'bishop', label: '角落ち', note: '囲碁側を助ける', rules: { handicap: 'bishop' } },
   { k: 'stones2', label: '置き石2', note: '囲碁側を助ける', rules: { stones: 2 } },
-  { k: 'goal-5', label: '目標−5個', note: '将棋側を助ける', rules: { goalDelta: -5 } },
-  { k: 'goal-10', label: '目標−10個', note: '将棋側を大きく助ける', rules: { goalDelta: -10 } },
+  { k: 'goal-3', label: '石の目標−3', note: '将棋側を助ける', rules: { goalDelta: -3 } },
+  { k: 'goal-6', label: '石の目標−6', note: '将棋側を大きく助ける', rules: { goalDelta: -6 } },
 ];
 const SAVE_KEY = 'shogi-vs-go-v1';
 
@@ -33,6 +33,7 @@ function rulesFor(hk) {
   if (H.rules.handicap) r.handicap = H.rules.handicap;
   if (H.rules.stones) r.stones = H.rules.stones;
   if (H.rules.goalDelta) r.goal += H.rules.goalDelta;
+  if (H.rules.takeDelta) r.take += H.rules.takeDelta;
   return r;
 }
 
@@ -78,7 +79,10 @@ function afterPosition() {
   const p = G.pos;
   G.legal = G.over ? [] : p.legalMoves();
   if (!G.over && G.legal.length === 0) {
-    G.over = { winner: p.side ^ 1, reason: p.side === GO ? '石を置ける場所がなくなりました' : '動かせる駒がなくなりました' };
+    if (p.side === GO) {
+      const a = p.area();
+      G.over = { winner: p.areaWinner(), reason: `置ける升がなくなったので地を数えました（囲碁 ${a.go}・将棋 ${a.shogi}）`, area: a };
+    } else G.over = { winner: GO, reason: '将棋側の動かせる駒がなくなりました' };
   }
   save();
   render();
@@ -116,7 +120,15 @@ function play(m) {
     if (before[d.to] === STONE) gone.push(d.to);
   }
   G.snaps.push({ state: p.serialize(), label, side: mover, move: d.end ? null : d, gone, note });
-  if (r > 0) G.over = { winner: mover, reason: mover === SHOGI ? `石を${p.goal}個取りました` : '玉を囲んで取りました' };
+  if (r > 0) {
+    const a = p.area();
+    let reason;
+    if (mover === SHOGI) reason = `石を${p.goal}個取りました`;
+    else if (p.kingSq < 0) reason = '玉を囲んで取りました';
+    else if (p.placed >= p.supply) reason = `碁笥の石を置き終えたので地を数えました（囲碁 ${a.go}・将棋 ${a.shogi}）`;
+    else reason = `駒を${p.take}枚取りました`;
+    G.over = { winner: r === 1 ? mover : mover ^ 1, reason };
+  }
   else if (G.snaps.length > 800) G.over = { winner: -1, reason: '手数が上限に達しました' };
   afterPosition();
 }
@@ -248,6 +260,17 @@ function threats() {
   return { risk, kingLibs, reach };
 }
 
+// 囲碁側が石を置ける升の数（自殺手を除く）
+function placeable() {
+  const p = G.pos;
+  let n = 0;
+  for (let s = 0; s < 81; s++) {
+    if (p.board[s]) continue;
+    if (p.make(E.goMove(s)) >= 0) { p.unmake(); n++; }
+  }
+  return n;
+}
+
 // 石を置いたらどうなるか
 function previewGo(sq) {
   const p = G.pos, m = E.goMove(sq);
@@ -328,7 +351,7 @@ function render() {
     if (v === STONE) c.appendChild(stoneEl(newStones.has(sq) ? 'new drop' : ''));
     else if (isPiece(v)) {
       c.appendChild(pieceEl(v));
-      if (th.risk.has(sq)) c.classList.add('risk');
+      if (th.risk.has(sq) && !G.over) c.classList.add('risk');
     } else if (G.ghost === sq) c.appendChild(stoneEl('ghost'));
     if (gone.has(sq) && !v) c.classList.add('gone');
     if (sel) {
@@ -391,26 +414,35 @@ function renderPanel(el, side, th) {
     const pr = h('span', 'progress'); const bar = h('i'); bar.style.width = Math.min(100, p.caps / p.goal * 100) + '%'; pr.appendChild(bar);
     l1.appendChild(pr);
     body.appendChild(l1);
-    const l2 = h('div', 'line' + (th.kingLibs >= 0 && th.kingLibs <= th.reach ? ' warn' : ''));
+    const danger = !G.over && th.kingLibs >= 0 && th.kingLibs <= th.reach;
+    const l2 = h('div', 'line' + (danger ? ' warn' : ''));
     l2.append('玉の呼吸点 ');
     l2.appendChild(h('b', '', th.kingLibs >= 0 ? String(th.kingLibs) : '―'));
-    if (th.kingLibs >= 0 && th.kingLibs <= th.reach) l2.append('（次で囲まれる）');
+    if (danger) l2.append('（次で囲まれる）');
     body.appendChild(l2);
   } else {
     const l1 = h('div', 'line');
     l1.append('取った駒 ');
-    const dd = h('span', 'dead');
-    let any = false;
-    for (const t of [2, 3, 4, 5, 6, 7, 8]) {
-      for (let k = 0; k < p.dead[t]; k++) { dd.appendChild(h('span', '', KANJI[t])); any = true; }
+    const takeRule = p.take < 40; // 駒の数で勝つルールを使うとき
+    if (takeRule) {
+      l1.appendChild(h('b', '', String(p.lost)));
+      l1.append(` / ${p.take}`);
+      const pr = h('span', 'progress go'); const bar = h('i'); bar.style.width = Math.min(100, p.lost / p.take * 100) + '%'; pr.appendChild(bar);
+      l1.appendChild(pr);
     }
-    if (!any) dd.appendChild(document.createTextNode('なし'));
-    l1.appendChild(dd);
+    const dd = h('span', 'dead');
+    for (const t of [1, 2, 3, 4, 5, 6, 7, 8]) for (let k = 0; k < p.dead[t]; k++) dd.appendChild(h('span', '', KANJI[t]));
+    if (!p.lost) dd.appendChild(document.createTextNode('なし'));
+    if (!takeRule) l1.appendChild(dd);
     body.appendChild(l1);
+    if (takeRule && p.lost) body.appendChild(dd);
+    const room = placeable();
     const l2 = h('div', 'line');
-    l2.append('盤上の石 ');
+    l2.append('碁笥の残り ');
+    l2.appendChild(h('b', '', String(Math.max(0, p.supply - p.placed))));
+    l2.append('個　盤上の石 ');
     l2.appendChild(h('b', '', String(p.stones)));
-    l2.append(`　1手番に${p.perTurn}つ置く`);
+    if (room <= 6 && !G.over) { l2.classList.add('warn'); l2.append(`　置ける升 ${room}`); }
     body.appendChild(l2);
   }
   el.appendChild(body);
@@ -560,8 +592,8 @@ function renderInfo(th) {
   }
   const r = h('div', 'row');
   if (G.over) r.appendChild(h('span', 'label', '盤の駒や石をタップすると、連と呼吸点を確かめられます。'));
-  else if (p.side === SHOGI) r.appendChild(h('span', 'label', `将棋側は石を${p.goal}個取れば勝ち。赤い点の駒は、次の囲碁の手番で囲まれて取られます。`));
-  else r.appendChild(h('span', 'label', `囲碁側は玉を囲んで取れば勝ち。1手番に石を${p.perTurn}つ置きます。駒をタップすると呼吸点が見えます。`));
+  else if (p.side === SHOGI) r.appendChild(h('span', 'label', `将棋側は、碁笥の石がなくなる前に石を${p.goal}個取れば勝ち。赤い点の駒は、次の囲碁の手番で囲まれて取られます。`));
+  else r.appendChild(h('span', 'label', `囲碁側は玉を囲むか、将棋側に${p.goal}個取られる前に碁笥の${p.supply}個を置き終えれば勝ち（地を数える）。駒をタップすると呼吸点が見えます。`));
   box.appendChild(r);
 }
 
@@ -747,6 +779,7 @@ function showRules() {
     <h3>囲碁側（石）</h3>
     <ul>
       <li>囲碁側から始めます。空いている升に石を置きます。<b>1回の手番に石を${p.perTurn}つ</b>置きます（最初の手番だけ1つ）。</li>
+      <li>碁笥（石の入れ物）には<b>${p.supply}個</b>の石があります。取られた石は戻りません。</li>
       <li>上下左右につながった石や駒は「連」になります。連のとなりの空き升が「呼吸点」です。</li>
       <li>石を置いて、駒の連の呼吸点をすべてふさぐと、その連の駒をまとめて取ります。</li>
     </ul>
@@ -757,14 +790,17 @@ function showRules() {
     </ul>
     <h3>勝ち負け</h3>
     <ul>
-      <li><b>囲碁側の勝ち</b>：玉を取る（玉を含む駒の連を囲む）。</li>
       <li><b>将棋側の勝ち</b>：石を<b>${p.goal}個</b>取る。</li>
-      <li>動かせる駒・置ける升がなくなった側の負けです。王手の決まりはありません。</li>
+      <li><b>囲碁側の勝ち</b>：${p.take < 40 ? `駒を<b>${p.take}枚</b>取る。または` : ''}玉を取る（玉を含む駒の連を囲む）。</li>
+      <li><b>碁笥の石を置き終えたら</b>：終局して、囲碁と同じく地を数えます。自分の石・駒の数と、自分だけに囲まれた空き升の数の合計が多い方の勝ちです（同じなら将棋側の勝ち）。ふつうは囲碁側が勝つので、将棋側はそれまでに石を${p.goal}個取る必要があります。</li>
+      <li>囲碁側が石を置ける升（自殺手にならない空き升）がなくなったときも、同じように地を数えて終局します。</li>
+      <li>将棋側は動かせる駒がなくなったら負けです。王手の決まりはありません。囲碁側はパスできません。</li>
     </ul>
     <h3>互角にするための調整</h3>
     <ul>
-      <li>元のルールのままだと、駒が毎手石を1つ取れる将棋側が圧倒的に有利でした。そこで囲碁側は1手番に石を2つ置き、将棋側の勝ちに必要な石の数を決めています。</li>
-      <li>この2つは、AI同士を何十局も対局させて、勝率がほぼ半々になるように選びました。</li>
+      <li>元のルールのままだと、駒が毎手石を1つ取れる将棋側が圧倒的に有利でした（将棋側の目標を45個にしても8戦全勝）。そこで囲碁側は1手番に石を2つ置きます。</li>
+      <li>それでも将棋側は石を食べ続けられるので、囲碁側の石の数を碁笥の${p.supply}個までにし、置き終えたら地を数えることにしました（実際の碁も、地を数えて勝ち負けを決めます）。</li>
+      <li>将棋側の目標の石の数は、AI同士を何百局も対局させて、勝率が半々に近くなるように選びました。</li>
     </ul>
     <h3>画面の見方</h3>
     <ul>
