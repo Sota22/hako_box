@@ -90,14 +90,6 @@ const START_ROWS = [
   [7, [0, B, 0, 0, 0, 0, 0, R, 0]],
   [6, [P, P, P, P, P, P, P, P, P]],
 ];
-// 駒落ち（将棋側のハンデ）: 取り除く升
-const HANDICAPS = {
-  none: [],
-  lance: [80],          // 香落ち
-  bishop: [64],         // 角落ち
-  rook: [70],           // 飛車落ち
-  two: [64, 70],        // 二枚落ち
-};
 // 置き石（囲碁側のハンデ）
 const STAR = { 0: [], 1: [22], 2: [20, 24], 3: [20, 24, 22], 4: [20, 24, 38, 42] };
 
@@ -107,7 +99,8 @@ const STAR = { 0: [], 1: [22], 2: [20, 24], 3: [20, 24, 22], 4: [20, 24, 38, 42]
 // firstTurn: 囲碁側が先手のときの最初の手番に置く数, eatChain: つながった石も駒で取れるか
 // supply: 囲碁側の碁笥の石の数。置き終わったら終局して地を数える
 // take: 囲碁側の勝ちに必要な駒の数（99 は使わない。玉を取ればその時点で勝ち）
-const DEFAULT_RULES = { goal: 37, supply: 100, take: 99, first: GO, perTurn: 2, firstTurn: 1, eatChain: true, handicap: 'none', stones: 0 };
+// 将棋側の並べ方はいつも平手（START_ROWS）で、駒落ちはない
+const DEFAULT_RULES = { goal: 37, supply: 100, take: 99, first: GO, perTurn: 2, firstTurn: 1, eatChain: true, stones: 0 };
 
 const MAXUNDO = 1 << 16;
 class Pos {
@@ -135,7 +128,6 @@ class Pos {
     const b = this.board;
     b.fill(0);
     for (const [r, row] of START_ROWS) for (let c = 0; c < 9; c++) if (row[c]) b[r * 9 + c] = row[c];
-    for (const sq of HANDICAPS[this.rules.handicap] || []) b[sq] = 0;
     this.stones = 0;
     for (const sq of STAR[this.rules.stones] || []) { b[sq] = STONE; this.stones++; }
     this.kingSq = 76;
@@ -945,7 +937,7 @@ class Searcher {
 }
 
 const SG = {
-  Pos, Searcher, decode, goMove, PARAMS, VAL, WIN, HANDICAPS, STAR, DEFAULT_RULES, END_TURN,
+  Pos, Searcher, decode, goMove, PARAMS, VAL, WIN, STAR, DEFAULT_RULES, END_TURN,
   EMPTY, K, R, B, G, S, N, L, P, PROM, STONE, SHOGI, GO, GO_FROM, ROW, COL, NEI, PROMOTABLE,
 };
 if (typeof module !== 'undefined' && module.exports) module.exports = SG;

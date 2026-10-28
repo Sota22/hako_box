@@ -16,11 +16,11 @@ const LEVELS = [
 // 手合い。互角は AI 同士の対局で将棋側と囲碁側の勝率がほぼ半々になる設定
 const HANDI = [
   { k: 'even', label: '互角', note: '標準', rules: {} },
-  { k: 'lance', label: '香落ち', note: '囲碁側を少し助ける', rules: { handicap: 'lance' } },
-  { k: 'bishop', label: '角落ち', note: '囲碁側を助ける', rules: { handicap: 'bishop' } },
   { k: 'stones2', label: '置き石2', note: '囲碁側を助ける', rules: { stones: 2 } },
   { k: 'goal-3', label: '石の目標−3', note: '将棋側を助ける', rules: { goalDelta: -3 } },
+  { k: 'goal+3', label: '石の目標+3', note: '囲碁側を助ける', rules: { goalDelta: 3 } },
   { k: 'goal-6', label: '石の目標−6', note: '将棋側を大きく助ける', rules: { goalDelta: -6 } },
+  { k: 'goal+6', label: '石の目標+6', note: '囲碁側を大きく助ける', rules: { goalDelta: 6 } },
 ];
 const SAVE_KEY = 'shogi-vs-go-v1';
 
@@ -30,7 +30,6 @@ const h = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e
 function rulesFor(hk) {
   const H = HANDI.find(x => x.k === hk) || HANDI[0];
   const r = Object.assign({}, E.DEFAULT_RULES);
-  if (H.rules.handicap) r.handicap = H.rules.handicap;
   if (H.rules.stones) r.stones = H.rules.stones;
   if (H.rules.goalDelta) r.goal += H.rules.goalDelta;
   if (H.rules.takeDelta) r.take += H.rules.takeDelta;
@@ -302,6 +301,10 @@ function loadSaved(data) {
   try {
     const o = data || JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
     if (!o || !o.snaps || !o.snaps.length) return false;
+    // 駒落ちで始めた古い対局は読み込まない（将棋側は平手で固定）
+    const r0 = o.snaps[0].state.rules || {};
+    if (r0.handicap && r0.handicap !== 'none') return false;
+    if (!HANDI.some(x => x.k === o.handi)) o.handi = 'even';
     G.mode = o.mode; G.human = o.human; G.level = o.level ?? 1; G.handi = o.handi || 'even'; G.flip = !!o.flip;
     G.snaps = o.snaps; G.over = o.over || null;
     restorePos();
@@ -772,7 +775,7 @@ function showRules() {
   sh.insertAdjacentHTML('beforeend', `
     <h3>将棋側（駒）</h3>
     <ul>
-      <li>駒の並べ方・動き・成りは将棋と同じです。</li>
+      <li>駒の並べ方はいつも平手（ふつうの将棋の初期配置）です。駒の動き・成りも将棋と同じです。</li>
       <li>石のある升へ動くと、その石を取ります。石は飛び越えられません（桂馬は跳べます）。</li>
       <li>取った石は持ち駒になりません。数を数えるだけです。</li>
     </ul>
