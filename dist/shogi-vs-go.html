@@ -1,0 +1,1988 @@
+<title>将棋対囲碁</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@700;800&family=Zen+Kaku+Gothic+New:wght@400;700&display=swap">
+<style>
+/* 榧の盤に、朱（将棋側）と藍（囲碁側）の二色。1画面に収まる縦積みレイアウト（量子将棋と同じ骨組み）。 */
+:root {
+  --bg: #eceef2;
+  --surface: #fbfbfc;
+  --ink: #1b1f2a;
+  --muted: #5d6474;
+  --line: #d2d6df;
+  --board: #e0b96f;
+  --board-line: #5a3f17;
+  --piece: #f6e6c2;
+  --piece-edge: #a8823f;
+  --piece-ink: #1d1409;
+  --prom: #b3261e;
+  --shogi: #b8452a;          /* 朱 */
+  --shogi-soft: rgba(184, 69, 42, 0.14);
+  --go: #2b4a7e;             /* 藍 */
+  --go-soft: rgba(43, 74, 126, 0.15);
+  --accent: var(--go);
+  --accent-ink: #ffffff;
+  --accent-soft: var(--go-soft);
+  --stone-hi: #5b6170;
+  --stone: #15171c;
+  --last: rgba(43, 74, 126, 0.22);
+  --danger: #c62828;
+  --good: #2e7d32;
+  --hint: #0f7d62;
+  --hint-soft: rgba(15, 125, 98, 0.2);
+  --lib: #2b4a7e;
+  --shadow: rgba(40, 30, 10, 0.28);
+  --f-piece: "Shippori Mincho B1", "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+  --f-ui: "Zen Kaku Gothic New", "Hiragino Sans", "Noto Sans JP", system-ui, sans-serif;
+  --cell: 38px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141a; --surface: #1b1e27; --ink: #e8eaf0; --muted: #9ca3b4; --line: #2e3242;
+    --board: #c99f55; --board-line: #3c2a0e; --piece: #f0dfb8; --piece-edge: #8f6c30; --piece-ink: #1d1409;
+    --prom: #b3261e; --shogi: #f08a6c; --shogi-soft: rgba(240, 138, 108, 0.18); --go: #8fb0ea; --go-soft: rgba(143, 176, 234, 0.2);
+    --accent-ink: #10131c; --stone-hi: #555b69; --stone: #0c0d10; --last: rgba(143, 176, 234, 0.3);
+    --danger: #ff6b6b; --good: #7bd389; --hint: #4fd1a8; --hint-soft: rgba(79, 209, 168, 0.24); --lib: #1d3a6e; --shadow: rgba(0, 0, 0, 0.5);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12141a; --surface: #1b1e27; --ink: #e8eaf0; --muted: #9ca3b4; --line: #2e3242;
+  --board: #c99f55; --board-line: #3c2a0e; --piece: #f0dfb8; --piece-edge: #8f6c30; --piece-ink: #1d1409;
+  --prom: #b3261e; --shogi: #f08a6c; --shogi-soft: rgba(240, 138, 108, 0.18); --go: #8fb0ea; --go-soft: rgba(143, 176, 234, 0.2);
+  --accent-ink: #10131c; --stone-hi: #555b69; --stone: #0c0d10; --last: rgba(143, 176, 234, 0.3);
+  --danger: #ff6b6b; --good: #7bd389; --hint: #4fd1a8; --hint-soft: rgba(79, 209, 168, 0.24); --lib: #1d3a6e; --shadow: rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
+}
+/* 今の手番の側の色をアクセントにする */
+.app.t-shogi { --accent: var(--shogi); --accent-soft: var(--shogi-soft); }
+.app.t-go { --accent: var(--go); --accent-soft: var(--go-soft); }
+
+* { box-sizing: border-box; }
+html, body { background: var(--bg); }
+body {
+  color: var(--ink); font-family: var(--f-ui); font-size: 14px;
+  -webkit-tap-highlight-color: transparent;
+}
+.app {
+  max-width: 520px; margin: 0 auto; padding-block: 10px 24px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 8px;
+}
+
+header.top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.brand { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.brand h1 { font-family: var(--f-piece); font-size: 22px; white-space: nowrap; font-weight: 800; margin: 0; letter-spacing: 0.04em; }
+.brand h1 .vs { font-size: 14px; margin: 0 3px; color: var(--muted); font-weight: 700; }
+.brand .sub { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-actions { display: flex; gap: 6px; flex: none; }
+.top-actions .btn { white-space: nowrap; }
+@media (max-width: 400px) { .brand .sub { display: none; } }
+
+button { font: inherit; color: inherit; cursor: pointer; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px; font-size: 13px; }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 700; }
+.btn:focus-visible, .cell:focus-visible, .opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 状況表示 */
+.status { display: flex; align-items: center; gap: 8px; min-height: 30px; font-size: 13px; }
+.turn-pill { padding: 3px 10px; border-radius: 99px; background: var(--surface); border: 1px solid var(--line); font-weight: 700; white-space: nowrap; }
+.turn-pill.mine { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.status .msg { color: var(--muted); min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status .msg.alert { color: var(--danger); font-weight: 700; }
+.meter { width: 64px; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; flex: none; }
+.meter > i { display: block; height: 100%; background: var(--accent); width: 50%; transition: width 0.4s; }
+
+/* 両陣営のパネル */
+.panel {
+  display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 6px 10px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--line); font-size: 12px;
+}
+.panel.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.panel .who { display: flex; align-items: center; gap: 6px; flex: none; font-weight: 700; font-size: 13px; }
+.panel .who .tag { font-size: 11px; color: var(--muted); font-weight: 400; }
+.panel .body { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.panel .line { display: flex; align-items: center; gap: 6px; min-width: 0; color: var(--muted); }
+.panel .line b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.panel .line.warn b, .panel .line.warn { color: var(--danger); }
+.mini-stone { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, var(--stone-hi), var(--stone) 70%); flex: none; }
+.mini-piece { display: inline-block; width: 12px; height: 13px; background: var(--piece); clip-path: polygon(50% 0%, 86% 14%, 100% 100%, 0% 100%, 14% 14%); flex: none; box-shadow: inset 0 0 0 1px var(--piece-edge); }
+.progress { position: relative; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; flex: 1; min-width: 40px; }
+.progress > i { position: absolute; inset: 0 auto 0 0; background: var(--shogi); border-radius: 3px; }
+.dead { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
+.dead span { font-family: var(--f-piece); font-weight: 700; font-size: 12px; color: var(--ink); background: var(--go-soft); border-radius: 4px; padding: 0 4px; line-height: 17px; }
+.stones-left { display: inline-flex; gap: 3px; margin-left: auto; }
+.stones-left i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--go); }
+.stones-left i.full { background: var(--go); }
+
+/* 盤 */
+.board-wrap { position: relative; display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 1fr; gap: 2px; }
+.files { grid-column: 1; display: grid; grid-template-columns: repeat(9, 1fr); font-size: 10px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
+.ranks { grid-column: 2; grid-row: 2; display: grid; grid-template-rows: repeat(9, 1fr); font-size: 10px; color: var(--muted); align-items: center; padding-left: 2px; }
+.board {
+  position: relative; grid-column: 1; grid-row: 2; display: grid; grid-template-columns: repeat(9, 1fr); background: var(--board);
+  border: 2px solid var(--board-line); box-shadow: 0 2px 10px var(--shadow); touch-action: manipulation;
+}
+/* 盤の星（将棋盤の目印。囲碁の星と同じく盤面の基準点） */
+.board .star { position: absolute; width: 6px; height: 6px; margin: -3px 0 0 -3px; border-radius: 50%; background: var(--board-line); pointer-events: none; z-index: 1; }
+.cell {
+  position: relative; aspect-ratio: 1 / 1.08; border-right: 1px solid var(--board-line); border-bottom: 1px solid var(--board-line);
+  display: flex; align-items: center; justify-content: center; padding: 1px; background: transparent; border-top: 0; border-left: 0; border-radius: 0;
+}
+.cell:nth-child(9n) { border-right: 0; }
+.cell:nth-last-child(-n+9) { border-bottom: 0; }
+.cell.last { background: var(--last); }
+.cell.grp { background: var(--accent-soft); }
+.cell.dest::after { content: ""; position: absolute; width: 28%; height: 26%; border-radius: 50%; background: var(--accent); opacity: 0.75; pointer-events: none; }
+.cell.dest.cap::after { width: 86%; height: 82%; background: transparent; border: 3px solid var(--accent); opacity: 0.9; }
+/* 選んだ連の呼吸点 */
+.cell.lib::before { content: ""; position: absolute; width: 34%; height: 32%; border-radius: 50%; border: 2px solid var(--lib); opacity: 0.85; pointer-events: none; }
+.cell.hint-from { box-shadow: inset 0 0 0 2px var(--hint); }
+.cell.hint-to { box-shadow: inset 0 0 0 3px var(--hint); background: var(--hint-soft); }
+/* 直前に取られた駒・石の跡 */
+.cell.gone::before { content: ""; position: absolute; inset: 18%; border-radius: 50%; border: 2px dashed var(--danger); opacity: 0; animation: gone 1.6s ease-out; pointer-events: none; }
+@keyframes gone { 0% { opacity: 0.95; transform: scale(0.7); } 100% { opacity: 0; transform: scale(1.1); } }
+
+/* 駒（五角形） */
+.piece {
+  position: relative; width: 90%; height: 94%; background: linear-gradient(170deg, var(--piece), color-mix(in srgb, var(--piece) 82%, var(--piece-edge)));
+  clip-path: polygon(50% 0%, 86% 14%, 100% 100%, 0% 100%, 14% 14%); color: var(--piece-ink);
+  display: grid; place-items: center; font-family: var(--f-piece); font-weight: 700; line-height: 1;
+  padding-top: 14%; filter: drop-shadow(0 1px 1px var(--shadow)); font-size: calc(var(--cell) * 0.54);
+}
+.piece.prom { color: var(--prom); }
+.piece.down { transform: rotate(180deg); }
+.cell.sel .piece { background: linear-gradient(170deg, color-mix(in srgb, var(--piece) 78%, var(--shogi)), var(--piece)); }
+/* 次の囲碁の手番で取られうる駒 */
+.cell.risk .piece { filter: drop-shadow(0 0 2px var(--danger)) drop-shadow(0 0 1px var(--danger)); }
+.cell.risk::after { content: ""; position: absolute; right: 6%; top: 6%; width: 18%; height: 17%; border-radius: 50%; background: var(--danger); pointer-events: none; z-index: 2; }
+.cell.risk.dest::after { right: auto; top: auto; }
+
+/* 碁石 */
+.stone {
+  width: 84%; aspect-ratio: 1; border-radius: 50%; position: relative;
+  background: radial-gradient(circle at 34% 30%, var(--stone-hi), var(--stone) 62%);
+  box-shadow: 0 1px 2px var(--shadow), 0 0 0 0.5px rgba(0, 0, 0, 0.4);
+}
+.stone.new::after { content: ""; position: absolute; left: 50%; top: 50%; width: 28%; height: 28%; margin: -14% 0 0 -14%; border-radius: 50%; border: 2px solid #f4f1ea; }
+.stone.ghost { opacity: 0.5; }
+.stone.ghost::after { content: "?"; position: absolute; inset: 0; display: grid; place-items: center; color: #f4f1ea; font-weight: 700; font-size: calc(var(--cell) * 0.34); }
+.stone.drop { animation: drop 0.25s ease-out; }
+@keyframes drop { 0% { transform: scale(1.25); opacity: 0.4; } 100% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .stone.drop, .cell.gone::before { animation: none; } .meter > i { transition: none; } }
+
+/* 情報欄 */
+.info { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 13px; display: flex; flex-direction: column; gap: 6px; min-height: 40px; justify-content: center; }
+.info .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.info .label { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.info b { font-variant-numeric: tabular-nums; }
+.chip { font-weight: 700; font-size: 12px; padding: 1px 7px; border-radius: 6px; background: var(--accent-soft); }
+.chip.warn { background: var(--danger); color: var(--surface); }
+
+.controls { display: flex; gap: 6px; flex-wrap: wrap; }
+.controls .btn { flex: 1 1 0; min-width: 0; }
+.controls .btn.on { border-color: var(--hint); color: var(--hint); }
+.btn.small { padding: 4px 10px; font-size: 12px; margin-left: auto; }
+.hint-tag { font-size: 11px; font-weight: 700; color: var(--surface); background: var(--hint); border-radius: 99px; padding: 2px 8px; }
+.hint-move { font-family: var(--f-piece); font-weight: 800; font-size: 17px; }
+
+details.log { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+details.log summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.log ol { margin: 6px 0 2px; padding-left: 2.6em; max-height: 180px; overflow-y: auto; font-size: 13px; font-variant-numeric: tabular-nums; }
+.log li { padding: 1px 0; }
+.log li .m { font-family: var(--f-piece); font-weight: 700; }
+.log li .m.s { color: var(--shogi); }
+.log li .m.g { color: var(--go); }
+.log li .q { color: var(--muted); font-size: 12px; }
+
+/* ダイアログ */
+.sheet-bg {
+  position: fixed; inset: 0; background: rgba(10, 10, 20, 0.45); display: flex; align-items: flex-end; justify-content: center; z-index: 10;
+  padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.sheet { background: var(--surface); color: var(--ink); border-radius: 14px; padding: 16px; width: 100%; max-width: 480px; max-height: 86vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 10px 40px var(--shadow); }
+.sheet h2 { margin: 0; font-family: var(--f-piece); font-size: 20px; text-wrap: balance; }
+.sheet h3 { margin: 4px 0 0; font-size: 14px; }
+.sheet p, .sheet li { line-height: 1.65; margin: 0; }
+.sheet ul { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 4px; }
+.sheet .note { color: var(--muted); font-size: 12px; }
+.opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+.opt { border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 9px 10px; text-align: left; display: flex; flex-direction: column; gap: 2px; }
+.opt b { font-size: 14px; }
+.opt small { color: var(--muted); font-size: 11px; }
+.opt.on { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); background: var(--accent-soft); }
+.opt.s.on { border-color: var(--shogi); box-shadow: inset 0 0 0 1px var(--shogi); background: var(--shogi-soft); }
+.opt.g.on { border-color: var(--go); box-shadow: inset 0 0 0 1px var(--go); background: var(--go-soft); }
+.sheet .actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.result { font-family: var(--f-piece); font-size: 28px; font-weight: 800; text-align: center; }
+.result.win { color: var(--good); }
+.result.lose { color: var(--danger); }
+.prom-choice { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.prom-choice .opt { align-items: center; text-align: center; padding: 12px 8px; }
+.prom-choice .opt .chars { font-family: var(--f-piece); font-weight: 700; font-size: 20px; }
+.prom-choice .opt .chars.p { color: var(--prom); }
+.rules-fig { display: flex; gap: 10px; align-items: center; justify-content: center; padding: 6px 0; flex-wrap: wrap; }
+.rules-fig .fig { display: grid; grid-template-columns: repeat(3, 26px); grid-auto-rows: 26px; background: var(--board); border: 1.5px solid var(--board-line); }
+.rules-fig .fig span { border: 0.5px solid color-mix(in srgb, var(--board-line) 60%, transparent); display: grid; place-items: center; }
+.rules-fig .fig .stone { width: 80%; }
+.rules-fig .fig .piece { width: 88%; height: 92%; font-size: 13px; }
+.rules-fig .cap { font-size: 12px; color: var(--muted); text-align: center; max-width: 9em; line-height: 1.5; }
+
+</style>
+<div class="app">
+  <header class="top">
+    <div class="brand"><h1>将棋<span class="vs">対</span>囲碁</h1><span class="sub">駒で取るか、石で囲むか</span></div>
+    <div class="top-actions">
+      <button type="button" class="btn" id="rules">ルール</button>
+      <button type="button" class="btn primary" id="new">新規</button>
+    </div>
+  </header>
+  <div class="status">
+    <span class="turn-pill" id="turn">●囲碁</span>
+    <span class="msg" id="msg"></span>
+    <span class="meter" id="meter" aria-hidden="true"><i></i></span>
+  </div>
+  <div class="panel" id="panel-top"></div>
+  <div class="board-wrap">
+    <div class="files" id="files"></div>
+    <div class="board" id="board"></div>
+    <div class="ranks" id="ranks"></div>
+  </div>
+  <div class="panel" id="panel-bottom"></div>
+  <div class="info" id="info"></div>
+  <div class="controls">
+    <button type="button" class="btn" id="undo">待った</button>
+    <button type="button" class="btn" id="hint">ヒント</button>
+    <button type="button" class="btn" id="flip">盤を反転</button>
+  </div>
+  <details class="log">
+    <summary>棋譜（<span id="log-count">0</span>手）</summary>
+    <ol id="log-list"></ol>
+  </details>
+</div>
+<script id="sg-engine">
+// 将棋対囲碁エンジン（ルール判定＋AI探索）
+// ブラウザ（メインスレッド / Web Worker）と Node.js の両方で動く単一ファイル。
+(function (root) {
+'use strict';
+
+// ---- 駒と石 -------------------------------------------------------------
+// 盤の値: 0 空き, 1..16 将棋の駒, 20 碁石
+const EMPTY = 0, K = 1, R = 2, B = 3, G = 4, S = 5, N = 6, L = 7, P = 8;
+const PROM = 8; // 成駒 = 元の駒 + 8（龍10 馬11 全13 圭14 杏15 と16）
+const STONE = 20;
+const SHOGI = 0, GO = 1; // 手番
+const PROMOTABLE = new Uint8Array(32);
+for (const c of [R, B, S, N, L, P]) PROMOTABLE[c] = 1;
+
+// ---- 盤の幾何 -----------------------------------------------------------
+// sq = row*9 + col。row 0 が上（一段目）、col 0 が左（9筋）。将棋側は下から上へ進む。
+const ROW = new Int8Array(81), COL = new Int8Array(81);
+for (let s = 0; s < 81; s++) { ROW[s] = (s / 9) | 0; COL[s] = s % 9; }
+// 方向: 0上 1下 2左 3右 4左上 5右上 6左下 7右下
+const DR = [-1, 1, 0, 0, -1, -1, 1, 1], DC = [0, 0, -1, 1, -1, 1, -1, 1];
+const RAYS = [];
+for (let d = 0; d < 8; d++) {
+  RAYS.push([]);
+  for (let s = 0; s < 81; s++) {
+    const r = [];
+    let y = ROW[s] + DR[d], x = COL[s] + DC[d];
+    while (y >= 0 && y < 9 && x >= 0 && x < 9) { r.push(y * 9 + x); y += DR[d]; x += DC[d]; }
+    RAYS[d].push(Int8Array.from(r));
+  }
+}
+const NEI = []; // 上下左右（呼吸点の判定用）
+for (let s = 0; s < 81; s++) {
+  const r = [];
+  for (let d = 0; d < 4; d++) { const y = ROW[s] + DR[d], x = COL[s] + DC[d]; if (y >= 0 && y < 9 && x >= 0 && x < 9) r.push(y * 9 + x); }
+  NEI.push(Int8Array.from(r));
+}
+const GOLD_D = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, 0]];
+const STEP_DEF = [];
+STEP_DEF[K] = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+STEP_DEF[G] = GOLD_D;
+STEP_DEF[S] = [[-1, -1], [-1, 0], [-1, 1], [1, -1], [1, 1]];
+STEP_DEF[N] = [[-2, -1], [-2, 1]];
+STEP_DEF[P] = [[-1, 0]];
+STEP_DEF[R + PROM] = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+STEP_DEF[B + PROM] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+for (const c of [S, N, L, P]) STEP_DEF[c + PROM] = GOLD_D;
+const SLIDE_DEF = [];
+SLIDE_DEF[R] = SLIDE_DEF[R + PROM] = [0, 1, 2, 3];
+SLIDE_DEF[B] = SLIDE_DEF[B + PROM] = [4, 5, 6, 7];
+SLIDE_DEF[L] = [0];
+const STEPS = [], SLIDES = [];
+for (let c = 0; c < 32; c++) {
+  STEPS.push(null); SLIDES.push(SLIDE_DEF[c] ? Int8Array.from(SLIDE_DEF[c]) : new Int8Array(0));
+  if (!STEP_DEF[c]) continue;
+  const arr = [];
+  for (let s = 0; s < 81; s++) {
+    const r = [];
+    for (const [dr, dc] of STEP_DEF[c]) {
+      const y = ROW[s] + dr, x = COL[s] + dc;
+      if (y >= 0 && y < 9 && x >= 0 && x < 9) r.push(y * 9 + x);
+    }
+    arr.push(Int8Array.from(r));
+  }
+  STEPS[c] = arr;
+}
+
+// ---- 手の表現 -----------------------------------------------------------
+// 将棋の手: from | to<<7 | 成り<<14 、 囲碁の手: 127 | to<<7 、 0: 囲碁側の手番を終える（置ける所がないとき）
+const GO_FROM = 127, END_TURN = 0;
+const goMove = to => GO_FROM | (to << 7);
+function decode(m) {
+  if (m === END_TURN) return { go: true, end: true };
+  const from = m & 127;
+  return from === GO_FROM ? { go: true, to: (m >> 7) & 127 } : { go: false, from, to: (m >> 7) & 127, prom: (m >> 14) & 1 };
+}
+
+// ---- Zobrist ------------------------------------------------------------
+let seed = 0x2545f491 | 0;
+function rnd() { seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5; return seed | 0; }
+const ZB1 = new Int32Array(81 * 32), ZB2 = new Int32Array(81 * 32);
+const ZC1 = new Int32Array(256), ZC2 = new Int32Array(256);
+const ZT1 = new Int32Array(16), ZT2 = new Int32Array(16); // 手番と、その手番で置ける残りの石数
+for (let i = 0; i < ZB1.length; i++) { ZB1[i] = rnd(); ZB2[i] = rnd(); }
+for (let i = 0; i < 256; i++) { ZC1[i] = rnd(); ZC2[i] = rnd(); }
+for (let i = 0; i < 16; i++) { ZT1[i] = rnd(); ZT2[i] = rnd(); }
+
+// ---- 初期配置と手合 -----------------------------------------------------
+const START_ROWS = [
+  [8, [L, N, S, G, K, G, S, N, L]],
+  [7, [0, B, 0, 0, 0, 0, 0, R, 0]],
+  [6, [P, P, P, P, P, P, P, P, P]],
+];
+// 駒落ち（将棋側のハンデ）: 取り除く升
+const HANDICAPS = {
+  none: [],
+  lance: [80],          // 香落ち
+  bishop: [64],         // 角落ち
+  rook: [70],           // 飛車落ち
+  two: [64, 70],        // 二枚落ち
+};
+// 置き石（囲碁側のハンデ）
+const STAR = { 0: [], 1: [22], 2: [20, 24], 3: [20, 24, 22], 4: [20, 24, 38, 42] };
+
+// goal: 将棋側の勝ちに必要な石の数, perTurn: 囲碁側が1手番に置く石の数,
+// firstTurn: 囲碁側が先手のときの最初の手番に置く数, eatChain: つながった石も駒で取れるか
+const DEFAULT_RULES = { goal: 30, first: GO, perTurn: 2, firstTurn: 1, eatChain: true, handicap: 'none', stones: 0 };
+
+const MAXUNDO = 1 << 16;
+class Pos {
+  constructor(rules) {
+    this.board = new Int8Array(81);
+    this.dead = new Uint8Array(32); // 囲碁側に取られた駒（元の駒の種類ごと）
+    this.u = new Int32Array(MAXUNDO);
+    this.vis = new Int32Array(81); this.stamp = 1;
+    this.stack = new Int8Array(96);
+    this.grp = new Int8Array(81); this.grpLen = 0;
+    this.setRules(rules);
+    this.initial();
+  }
+
+  setRules(rules) {
+    this.rules = Object.assign({}, DEFAULT_RULES, rules || {});
+    this.goal = this.rules.goal;
+    this.perTurn = this.rules.perTurn;
+    this.eatChain = !!this.rules.eatChain;
+  }
+
+  initial() {
+    const b = this.board;
+    b.fill(0);
+    for (const [r, row] of START_ROWS) for (let c = 0; c < 9; c++) if (row[c]) b[r * 9 + c] = row[c];
+    for (const sq of HANDICAPS[this.rules.handicap] || []) b[sq] = 0;
+    this.stones = 0;
+    for (const sq of STAR[this.rules.stones] || []) { b[sq] = STONE; this.stones++; }
+    this.kingSq = 76;
+    this.side = this.rules.first;
+    this.left = this.side === GO ? this.rules.firstTurn : 0;
+    this.caps = 0; this.placed = this.stones; this.dead.fill(0);
+    this.usp = 0;
+    this.rehash();
+  }
+
+  turnKey() { return this.side === GO ? 8 + this.left : 0; }
+
+  rehash() {
+    let h1 = 0, h2 = 0;
+    for (let s = 0; s < 81; s++) if (this.board[s]) { h1 ^= ZB1[s * 32 + this.board[s]]; h2 ^= ZB2[s * 32 + this.board[s]]; }
+    h1 ^= ZC1[this.caps & 255]; h2 ^= ZC2[this.caps & 255];
+    const t = this.turnKey();
+    h1 ^= ZT1[t]; h2 ^= ZT2[t];
+    this.h1 = h1; this.h2 = h2;
+  }
+
+  serialize() {
+    return { board: Array.from(this.board), side: this.side, left: this.left, caps: this.caps, placed: this.placed, dead: Array.from(this.dead), rules: this.rules };
+  }
+  load(o) {
+    this.setRules(o.rules);
+    this.board.set(o.board);
+    this.side = o.side; this.left = o.left || 0; this.caps = o.caps; this.placed = o.placed || 0;
+    this.dead.fill(0); if (o.dead) this.dead.set(o.dead);
+    this.stones = 0; this.kingSq = -1;
+    for (let s = 0; s < 81; s++) { if (this.board[s] === STONE) this.stones++; else if (this.board[s] === K) this.kingSq = s; }
+    this.usp = 0;
+    this.rehash();
+  }
+
+  // sq を含む連（同じ側の上下左右のつながり）に呼吸点があるか。
+  // 無い場合は this.grp[0..grpLen) に連の升が入る。
+  hasLiberty(sq) {
+    const b = this.board, stone = b[sq] === STONE;
+    const st = ++this.stamp, vis = this.vis, stack = this.stack, grp = this.grp;
+    let sp = 0, n = 0;
+    stack[sp++] = sq; vis[sq] = st;
+    while (sp > 0) {
+      const s = stack[--sp];
+      grp[n++] = s;
+      const nb = NEI[s];
+      for (let i = 0; i < nb.length; i++) {
+        const t = nb[i], c = b[t];
+        if (c === 0) return true;
+        if (vis[t] !== st && (c === STONE) === stone) { vis[t] = st; stack[sp++] = t; }
+      }
+    }
+    this.grpLen = n;
+    return false;
+  }
+
+  // 呼吸点の数（連全体）
+  libertyCount(sq) {
+    const b = this.board, stone = b[sq] === STONE;
+    const st = ++this.stamp, vis = this.vis, stack = this.stack;
+    let sp = 0, libs = 0;
+    stack[sp++] = sq; vis[sq] = st;
+    while (sp > 0) {
+      const s = stack[--sp];
+      const nb = NEI[s];
+      for (let i = 0; i < nb.length; i++) {
+        const t = nb[i];
+        if (vis[t] === st) continue;
+        const c = b[t];
+        if (c === 0) { vis[t] = st; libs++; }
+        else if ((c === STONE) === stone) { vis[t] = st; stack[sp++] = t; }
+      }
+    }
+    return libs;
+  }
+
+  // 連の升と呼吸点の一覧（画面表示用）
+  groupInfo(sq) {
+    const b = this.board, stone = b[sq] === STONE;
+    const cells = [], libs = [];
+    const seen = new Uint8Array(81);
+    const st = [sq]; seen[sq] = 1;
+    while (st.length) {
+      const s = st.pop(); cells.push(s);
+      for (const t of NEI[s]) {
+        if (seen[t]) continue;
+        const c = b[t];
+        if (c === 0) { seen[t] = 1; libs.push(t); }
+        else if ((c === STONE) === stone) { seen[t] = 1; st.push(t); }
+      }
+    }
+    return { cells, libs };
+  }
+
+  // 駒で取れる石か（つながった石を取れないルールのとき）
+  edible(sq) {
+    if (this.eatChain) return true;
+    const nb = NEI[sq], b = this.board;
+    for (let i = 0; i < nb.length; i++) if (b[nb[i]] === STONE) return false;
+    return true;
+  }
+
+  _remove(n) {
+    // grp[0..n) を盤から取り除き、undo に積む
+    const b = this.board, u = this.u, grp = this.grp;
+    let usp = this.usp, h1 = this.h1, h2 = this.h2;
+    for (let i = 0; i < n; i++) {
+      const s = grp[i], c = b[s];
+      u[usp++] = s | (c << 8);
+      h1 ^= ZB1[s * 32 + c]; h2 ^= ZB2[s * 32 + c];
+      b[s] = 0;
+    }
+    this.usp = usp; this.h1 = h1; this.h2 = h2;
+  }
+
+  // 1手指す。戻り値: -1 不正（自殺手）, 0 通常, 1 指した側の勝ち
+  make(m) {
+    const b = this.board, u = this.u;
+    const from = m & 127, to = (m >> 7) & 127;
+    const base = this.usp;
+    const h1p = this.h1, h2p = this.h2, capsP = this.caps, kingP = this.kingSq, stonesP = this.stones;
+    const sideP = this.side, leftP = this.left;
+    let removed = 0, win = 0, mv = 0;
+    if (m === END_TURN) {
+      // 置ける所がないときだけ使う（手番を将棋側へ）
+    } else if (from === GO_FROM) {
+      // 囲碁: 石を置く → 呼吸点の無くなった駒の連を取る → 自殺手は不可
+      b[to] = STONE; this.stones++; this.placed++;
+      this.h1 ^= ZB1[to * 32 + STONE]; this.h2 ^= ZB2[to * 32 + STONE];
+      const nb = NEI[to];
+      for (let i = 0; i < nb.length; i++) {
+        const t = nb[i], c = b[t];
+        if (c === 0 || c === STONE) continue;
+        if (!this.hasLiberty(t)) {
+          const n = this.grpLen;
+          for (let j = 0; j < n; j++) {
+            const pc = b[this.grp[j]];
+            if (pc === K) { win = 1; this.kingSq = -1; }
+            this.dead[pc > PROM ? pc - PROM : pc]++;
+          }
+          this._remove(n); removed += n;
+        }
+      }
+      if (!removed && !this.hasLiberty(to)) {
+        b[to] = 0; this.stones--; this.placed--;
+        this.h1 = h1p; this.h2 = h2p; this.usp = base;
+        return -1;
+      }
+    } else {
+      // 将棋: 駒を動かす（石の上に動けば取る） → 呼吸点の無くなった石の連を取る → 自殺手は不可
+      const pc = b[from], tgt = b[to];
+      const npc = (m >> 14) & 1 ? pc + PROM : pc;
+      this.h1 ^= ZC1[this.caps & 255]; this.h2 ^= ZC2[this.caps & 255];
+      if (tgt === STONE) {
+        this.caps++; this.stones--;
+        this.h1 ^= ZB1[to * 32 + STONE]; this.h2 ^= ZB2[to * 32 + STONE];
+      }
+      b[from] = 0; b[to] = npc;
+      this.h1 ^= ZB1[from * 32 + pc] ^ ZB1[to * 32 + npc];
+      this.h2 ^= ZB2[from * 32 + pc] ^ ZB2[to * 32 + npc];
+      if (pc === K) this.kingSq = to;
+      const nb = NEI[to];
+      for (let i = 0; i < nb.length; i++) {
+        const t = nb[i];
+        if (b[t] !== STONE) continue;
+        if (!this.hasLiberty(t)) {
+          const n = this.grpLen;
+          this._remove(n); removed += n;
+          this.caps += n; this.stones -= n;
+        }
+      }
+      if (!removed && !this.hasLiberty(to)) {
+        b[to] = tgt; b[from] = pc;
+        this.caps = capsP; this.stones = stonesP; this.kingSq = kingP;
+        this.h1 = h1p; this.h2 = h2p; this.usp = base;
+        return -1;
+      }
+      this.h1 ^= ZC1[this.caps & 255]; this.h2 ^= ZC2[this.caps & 255];
+      mv = pc | (tgt << 8);
+      if (this.caps >= this.goal) win = 1;
+    }
+    // 手番の更新（囲碁側は1手番に perTurn 個置く）
+    const t0 = this.turnKey();
+    if (sideP === SHOGI) { this.side = GO; this.left = this.perTurn; }
+    else if (m === END_TURN || --this.left <= 0) { this.side = SHOGI; this.left = 0; }
+    const t1 = this.turnKey();
+    this.h1 ^= ZT1[t0] ^ ZT1[t1]; this.h2 ^= ZT2[t0] ^ ZT2[t1];
+    u[this.usp++] = mv;
+    u[this.usp++] = removed;
+    u[this.usp++] = m;
+    u[this.usp++] = capsP | (stonesP << 8) | ((kingP + 1) << 16) | (leftP << 24) | (sideP << 28);
+    u[this.usp++] = h1p;
+    u[this.usp++] = h2p;
+    return win;
+  }
+
+  unmake() {
+    const b = this.board, u = this.u;
+    const h2p = u[--this.usp], h1p = u[--this.usp], meta = u[--this.usp], m = u[--this.usp], removed = u[--this.usp];
+    const mv = u[--this.usp];
+    const from = m & 127, to = (m >> 7) & 127;
+    const goMv = m !== END_TURN && from === GO_FROM;
+    // 取られた連を戻す
+    for (let i = 0; i < removed; i++) {
+      const x = u[--this.usp], s = x & 255, c = x >> 8;
+      b[s] = c;
+      if (goMv) this.dead[c > PROM ? c - PROM : c]--;
+    }
+    if (m !== END_TURN) {
+      if (goMv) { b[to] = 0; this.placed--; }
+      else { b[from] = mv & 255; b[to] = mv >> 8; }
+    }
+    this.caps = meta & 255; this.stones = (meta >> 8) & 255; this.kingSq = ((meta >> 16) & 255) - 1;
+    this.left = (meta >> 24) & 15; this.side = (meta >> 28) & 1;
+    this.h1 = h1p; this.h2 = h2p;
+  }
+
+  // 疑似合法手の生成。mode 0: 探索用（飛角歩の不成は省く） 1: すべて 2: targets の升への手だけ
+  gen(buf, off, mode, targets) {
+    const b = this.board;
+    let n = off;
+    if (this.side === GO) {
+      if (mode === 2) {
+        for (let s = 0; s < 81; s++) if (targets[s] && b[s] === 0) buf[n++] = GO_FROM | (s << 7);
+      } else {
+        for (let s = 0; s < 81; s++) if (b[s] === 0) buf[n++] = GO_FROM | (s << 7);
+      }
+      return n - off;
+    }
+    const ec = this.eatChain;
+    for (let s = 0; s < 81; s++) {
+      const c = b[s];
+      if (c === 0 || c === STONE) continue;
+      const st = STEPS[c] ? STEPS[c][s] : null;
+      if (st) {
+        for (let i = 0; i < st.length; i++) {
+          const t = st[i], tc = b[t];
+          if (tc !== 0 && (tc !== STONE || (!ec && !this.edible(t)))) continue;
+          if (mode === 2 && !targets[t]) continue;
+          n = this._add(buf, n, s, t, c, mode);
+        }
+      }
+      const sl = SLIDES[c];
+      for (let k = 0; k < sl.length; k++) {
+        const ray = RAYS[sl[k]][s];
+        for (let i = 0; i < ray.length; i++) {
+          const t = ray[i], tc = b[t];
+          if (tc !== 0 && tc !== STONE) break;
+          if (tc === STONE && !ec && !this.edible(t)) break;
+          if (mode !== 2 || targets[t]) n = this._add(buf, n, s, t, c, mode);
+          if (tc === STONE) break;
+        }
+      }
+    }
+    return n - off;
+  }
+  _add(buf, n, from, to, c, mode) {
+    const m = from | (to << 7);
+    if (PROMOTABLE[c] && (ROW[from] <= 2 || ROW[to] <= 2)) {
+      buf[n++] = m | (1 << 14);
+      const r = ROW[to];
+      if ((c === P || c === L) && r === 0) return n;
+      if (c === N && r <= 1) return n;
+      if (mode !== 1 && (c === P || c === R || c === B)) return n;
+    }
+    buf[n++] = m;
+    return n;
+  }
+
+  // 合法手（自殺手を除く）。囲碁側が2つ目以降を置けないときは END_TURN だけ
+  legalMoves() {
+    const buf = new Int32Array(1024);
+    const n = this.gen(buf, 0, 1);
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const r = this.make(buf[i]);
+      if (r >= 0) { this.unmake(); out.push(buf[i]); }
+    }
+    if (!out.length && this.side === GO && this.left < this.perTurn) out.push(END_TURN);
+    return out;
+  }
+
+  // 玉の連の呼吸点（玉が無ければ -1）
+  kingLiberties() { return this.kingSq < 0 ? -1 : this.libertyCount(this.kingSq); }
+}
+
+// ---- AI -----------------------------------------------------------------
+// 評価値は将棋側から見た値（センチ歩くらいの単位）
+const VAL = new Int32Array(32);
+VAL[P] = 100; VAL[L] = 280; VAL[N] = 300; VAL[S] = 420; VAL[G] = 460; VAL[B] = 700; VAL[R] = 820;
+VAL[P + PROM] = 460; VAL[L + PROM] = 440; VAL[N + PROM] = 440; VAL[S + PROM] = 460; VAL[B + PROM] = 950; VAL[R + PROM] = 1100;
+
+const PARAMS = {
+  cap: 120,                     // 取った石1つ
+  near: [0, 9000, 1200, 520, 240, 110, 40],  // あと k 個で勝ちのときの上乗せ
+  kl: [0, 1600, 560, 230, 95, 35, 10],      // 玉の連の呼吸点が少ないときの減点（囲碁側が1手番で詰められる数を引いた値で引く）
+  mob: 3,                       // 駒の動ける升の数
+  eat: 16,                      // 取れる位置にある石
+  solid: 0,                     // 取られない位置にある石（囲碁側の得点）。遠くの安全な石を好んでしまうので使わない
+  space: 6,                     // 玉から石を通らずに行ける空き升
+  spaceCap: 64,
+  kspace: 0,                    // 玉から近い（kdepth 歩以内）空き升
+  kdepth: 3,
+  pieceLib: 30,                 // 囲碁側の次の手番で取られうる駒の連
+  goTempo: 40,                  // 囲碁側の手番で置ける残り石1つあたり
+  tempo: 10,
+  // AI が持つ側ごとの上書き（自己対局で強くなった値）
+  bySide: [{ kspace: 8 }, {}],
+};
+
+const INF = 1 << 30, WIN = 10000000;
+const BASE = 5600; // 初期局面がだいたい 0 になるように
+const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : () => Date.now();
+
+class Searcher {
+  constructor(pos, ttBits) {
+    this.p = pos;
+    const bits = ttBits || 20;
+    this.ttSize = 1 << bits; this.ttMask = this.ttSize - 1;
+    this.ttKey = new Int32Array(this.ttSize);
+    this.ttMove = new Int32Array(this.ttSize);
+    this.ttScore = new Int32Array(this.ttSize);
+    this.ttDepth = new Int8Array(this.ttSize);
+    this.ttFlag = new Uint8Array(this.ttSize);
+    this.MAXPLY = 64;
+    this.moveBuf = new Int32Array(this.MAXPLY * 600);
+    this.scoreBuf = new Int32Array(this.MAXPLY * 600);
+    this.killers = new Int32Array(this.MAXPLY * 2);
+    this.history = new Int32Array(2 * 128 * 81);
+    this.params = Object.assign({}, PARAMS);
+    this.override = null; // 自己対局の比較用
+    this.P = this.params;
+    // 解析用
+    this.gid = new Int16Array(81);
+    this.gLibs = new Int16Array(81); this.gLib1 = new Int8Array(81); this.gSize = new Int16Array(81);
+    this.gStone = new Uint8Array(81); this.gVal = new Int32Array(81);
+    this.gmark = new Int32Array(81); this.gst = 0;
+    this.att = new Uint8Array(81);
+    this.tgt = new Uint8Array(81);
+    this.stack = new Int8Array(96);
+    this.noise = 0; this.noiseAmp = 12; // 自己対局で手をばらけさせる
+  }
+  setPos(p) { this.p = p; }
+  clearTT() { this.ttKey.fill(0); this.ttFlag.fill(0); this.ttMove.fill(0); this.ttDepth.fill(0); this.history.fill(0); }
+
+  // 連ごとの呼吸点などを数える
+  analyze() {
+    const p = this.p, b = p.board, gid = this.gid, stack = this.stack, mark = this.gmark;
+    gid.fill(-1);
+    let ng = 0;
+    for (let s = 0; s < 81; s++) {
+      const c = b[s];
+      if (c === 0 || gid[s] >= 0) continue;
+      const stone = c === STONE;
+      const st = ++this.gst;
+      let sp = 0, size = 0, libs = 0, val = 0, lib1 = -1;
+      stack[sp++] = s; gid[s] = ng;
+      while (sp > 0) {
+        const x = stack[--sp];
+        size++;
+        if (!stone) val += VAL[b[x]];
+        const nb = NEI[x];
+        for (let i = 0; i < nb.length; i++) {
+          const t = nb[i], tc = b[t];
+          if (tc === 0) { if (mark[t] !== st) { mark[t] = st; libs++; lib1 = t; } }
+          else if ((tc === STONE) === stone && gid[t] < 0) { gid[t] = ng; stack[sp++] = t; }
+        }
+      }
+      this.gLibs[ng] = libs; this.gLib1[ng] = lib1; this.gSize[ng] = size; this.gStone[ng] = stone ? 1 : 0; this.gVal[ng] = val;
+      ng++;
+    }
+    this.ng = ng;
+  }
+
+  // 将棋側の利き（att[t] = その升に動ける駒の数）と動ける升の総数
+  scan() {
+    const p = this.p, b = p.board, att = this.att, ec = p.eatChain;
+    att.fill(0);
+    let mob = 0;
+    for (let s = 0; s < 81; s++) {
+      const c = b[s];
+      if (c === 0 || c === STONE) continue;
+      const st = STEPS[c] ? STEPS[c][s] : null;
+      if (st) for (let i = 0; i < st.length; i++) { const t = st[i], tc = b[t]; if (tc === 0 || (tc === STONE && (ec || p.edible(t)))) { att[t]++; mob++; } }
+      const sl = SLIDES[c];
+      for (let k = 0; k < sl.length; k++) {
+        const ray = RAYS[sl[k]][s];
+        for (let i = 0; i < ray.length; i++) {
+          const t = ray[i], tc = b[t];
+          if (tc !== 0 && tc !== STONE) break;
+          if (tc === STONE) { if (ec || p.edible(t)) { att[t]++; mob++; } break; }
+          att[t]++; mob++;
+        }
+      }
+    }
+    return mob;
+  }
+
+  // 玉から石を通らずに行ける空き升の数（上限つき）
+  space(cap) {
+    const p = this.p, b = p.board, ks = p.kingSq;
+    if (ks < 0) return 0;
+    const st = ++this.gst, mark = this.gmark, q = this.qbuf || (this.qbuf = new Int8Array(81));
+    let h = 0, t = 0, n = 0;
+    q[t++] = ks; mark[ks] = st;
+    while (h < t) {
+      const x = q[h++];
+      const nb = NEI[x];
+      for (let i = 0; i < nb.length; i++) {
+        const y = nb[i];
+        if (mark[y] === st || b[y] === STONE) continue;
+        mark[y] = st; q[t++] = y;
+        if (b[y] === 0 && ++n >= cap) return n;
+      }
+    }
+    return n;
+  }
+
+  // 玉から石を通らずに depth 歩以内で行ける空き升の数
+  nearSpace(depth) {
+    const p = this.p, b = p.board, ks = p.kingSq;
+    if (ks < 0) return 0;
+    const st = ++this.gst, mark = this.gmark, q = this.qbuf || (this.qbuf = new Int8Array(81)), dist = this.dbuf || (this.dbuf = new Int8Array(81));
+    let h = 0, t = 0, n = 0;
+    q[t++] = ks; mark[ks] = st; dist[ks] = 0;
+    while (h < t) {
+      const x = q[h++];
+      if (dist[x] >= depth) continue;
+      const nb = NEI[x];
+      for (let i = 0; i < nb.length; i++) {
+        const y = nb[i];
+        if (mark[y] === st || b[y] === STONE) continue;
+        mark[y] = st; q[t++] = y; dist[y] = dist[x] + 1;
+        if (b[y] === 0) n++;
+      }
+    }
+    return n;
+  }
+
+  // 囲碁側が次に置ける石の数（今が囲碁の手番なら残り、将棋の手番なら次の手番の数）
+  goReach() { const p = this.p; return p.side === GO ? p.left : p.perTurn; }
+
+  evaluate() {
+    const p = this.p, P = this.P, b = p.board;
+    this.analyze();
+    const mob = this.scan();
+    const att = this.att;
+    let e = P.cap * p.caps;
+    const left = p.goal - p.caps;
+    if (left < P.near.length) e += P.near[left];
+    const reach = this.goReach();
+    let kl = 99;
+    const kg = p.kingSq >= 0 ? this.gid[p.kingSq] : -1;
+    for (let g = 0; g < this.ng; g++) {
+      if (this.gStone[g]) continue;
+      e += this.gVal[g];
+      if (g === kg) kl = this.gLibs[g];
+      else if (this.gLibs[g] <= reach) e -= P.pieceLib + (this.gVal[g] >> 2);
+    }
+    const ki = kl - reach + 1; // 1 なら囲碁側の次の手番で玉が取られうる
+    if (ki < P.kl.length) e -= P.kl[ki < 0 ? 0 : ki];
+    let eat = 0, solid = 0;
+    for (let s = 0; s < 81; s++) {
+      if (b[s] !== STONE) continue;
+      if (att[s]) eat++; else solid++;
+    }
+    e += P.eat * eat - P.solid * solid + P.mob * mob;
+    e += P.space * this.space(P.spaceCap) - BASE;
+    if (P.kspace) e += P.kspace * this.nearSpace(P.kdepth);
+    if (p.side === GO) e -= P.goTempo * p.left;
+    if (this.noise) e += ((Math.imul(p.h1 ^ this.noise, 0x9e3779b1) >>> 24) % (2 * this.noiseAmp + 1)) - this.noiseAmp;
+    return (p.side === SHOGI ? e : -e) + P.tempo;
+  }
+
+  ttProbe() {
+    const i = this.p.h1 & this.ttMask;
+    return this.ttKey[i] === this.p.h2 && this.ttFlag[i] ? i : -1;
+  }
+  ttStore(depth, flag, score, move, ply) {
+    const i = this.p.h1 & this.ttMask;
+    if (this.ttKey[i] === this.p.h2 && this.ttDepth[i] > depth && this.ttFlag[i]) return;
+    if (score > WIN - 1000) score += ply; else if (score < -WIN + 1000) score -= ply;
+    this.ttKey[i] = this.p.h2; this.ttDepth[i] = depth; this.ttFlag[i] = flag; this.ttScore[i] = score; this.ttMove[i] = move;
+  }
+
+  timeUp() {
+    if ((++this.nodes & 1023) === 0 && now() > this.deadline) this.stop = true;
+    return this.stop;
+  }
+
+  histIdx(m) { return ((this.p.side * 128 + (m & 127)) * 81) + ((m >> 7) & 127); }
+
+  // 手の並べ替え。analyze() 済みの局面で呼ぶ
+  orderMoves(off, n, ttMove, ply) {
+    const p = this.p, mb = this.moveBuf, sb = this.scoreBuf, b = p.board, gid = this.gid;
+    const k1 = this.killers[ply * 2], k2 = this.killers[ply * 2 + 1];
+    const goSide = p.side === GO;
+    const kg = p.kingSq >= 0 ? gid[p.kingSq] : -1;
+    const reach = goSide ? p.left : 0;
+    for (let i = off; i < off + n; i++) {
+      const m = mb[i];
+      if (m === ttMove) { sb[i] = 1 << 29; continue; }
+      const to = (m >> 7) & 127;
+      let s = 0;
+      if (goSide) {
+        // 囲碁: 駒の連の呼吸点を詰める手（取る・アタリ）、玉の連に迫る手
+        const nb = NEI[to];
+        let tact = 0;
+        for (let j = 0; j < nb.length; j++) {
+          const t = nb[j], c = b[t];
+          if (c === 0 || c === STONE) continue;
+          const g = gid[t], lb = this.gLibs[g];
+          if (lb <= reach) tact += (g === kg ? 1 << 24 : (1 << 22) + this.gVal[g] * (lb === 1 ? 4 : 1));
+          else if (lb === reach + 1) tact += (g === kg ? 1 << 21 : (1 << 19) + (this.gVal[g] >> 1));
+          else if (g === kg) tact += 4000 + (8 - lb) * 500;
+          else tact += 300;
+        }
+        s = tact ? (1 << 20) + tact : 0;
+      } else {
+        const from = m & 127, tgt = b[to];
+        if (tgt === STONE) s = (1 << 24) - VAL[b[from]] + (this.gLibs[gid[to]] === 1 ? 2000 : 0);
+        else {
+          // 石の連の最後の呼吸点に動く手（囲んで取る）
+          const nb = NEI[to];
+          for (let j = 0; j < nb.length; j++) {
+            const t = nb[j];
+            if (b[t] === STONE && this.gLibs[gid[t]] === 1) { s = (1 << 23) + this.gSize[gid[t]] * 100; break; }
+          }
+          // 次の囲碁の手番で取られうる連から逃げる手
+          if (!s && this.gLibs[gid[from]] <= p.perTurn) s = (1 << 21) + VAL[b[from]] + (gid[from] === kg ? 1 << 22 : 0);
+        }
+        if ((m >> 14) & 1) s += 3000;
+      }
+      if (s < (1 << 20)) {
+        if (m === k1) s = (1 << 20) - 2;
+        else if (m === k2) s = (1 << 20) - 3;
+        else s += this.history[this.histIdx(m)] >> 4;
+      }
+      sb[i] = s;
+    }
+  }
+  pick(i, end) {
+    const mb = this.moveBuf, sb = this.scoreBuf;
+    let bi = i, bs = sb[i];
+    for (let j = i + 1; j < end; j++) if (sb[j] > bs) { bs = sb[j]; bi = j; }
+    if (bi !== i) {
+      const tm = mb[i]; mb[i] = mb[bi]; mb[bi] = tm;
+      const ts = sb[i]; sb[i] = sb[bi]; sb[bi] = ts;
+    }
+    return mb[i];
+  }
+
+  // 子局面の値（同じ側が続けて指すときは符号を変えない）
+  child(depth, alpha, beta, ply, side, q, qd) {
+    if (this.p.side === side) return q ? this.qsearch(alpha, beta, ply, qd) : this.search(depth, alpha, beta, ply);
+    return -(q ? this.qsearch(-beta, -alpha, ply, qd) : this.search(depth, -beta, -alpha, ply));
+  }
+
+  // 静止探索: 取る手（と、玉の危機への対応）だけを読む
+  qsearch(alpha, beta, ply, qd) {
+    const p = this.p;
+    if (this.timeUp()) return 0;
+    const stand = this.evaluate(); // analyze() も済む
+    const side = p.side;
+    const kg = p.kingSq >= 0 ? this.gid[p.kingSq] : -1;
+    const kl = kg >= 0 ? this.gLibs[kg] : 0;
+    const evade = side === SHOGI && kl <= p.perTurn && qd < 5;
+    let best = -INF;
+    if (!evade) {
+      if (stand >= beta || qd >= 8 || ply >= this.MAXPLY - 2) return stand;
+      if (stand > alpha) alpha = stand;
+      best = stand;
+    }
+    const tg = this.tgt, b = p.board;
+    let any = false;
+    if (side === GO) {
+      tg.fill(0);
+      const reach = p.left;
+      for (let g = 0; g < this.ng; g++) {
+        if (this.gStone[g]) continue;
+        const lb = this.gLibs[g];
+        if (lb <= reach || (g === kg && lb <= reach + 1 && qd < 3)) {
+          if (lb === 1) tg[this.gLib1[g]] = 1;
+          else for (let s = 0; s < 81; s++) if (b[s] === 0 && this.adjGroup(s, g)) tg[s] = 1;
+          any = true;
+        }
+      }
+    } else if (!evade) {
+      tg.fill(0);
+      for (let s = 0; s < 81; s++) if (b[s] === STONE) { tg[s] = 1; any = true; }
+      for (let g = 0; g < this.ng; g++) if (this.gStone[g] && this.gLibs[g] === 1) { tg[this.gLib1[g]] = 1; any = true; }
+    }
+    if (!any && !evade) return best;
+    const off = ply * 600;
+    const n = p.gen(this.moveBuf, off, evade ? 0 : 2, tg);
+    this.orderMoves(off, n, 0, ply);
+    let legal = 0;
+    for (let i = off; i < off + n; i++) {
+      const m = this.pick(i, off + n);
+      const r = p.make(m);
+      if (r < 0) continue;
+      legal++;
+      if (r > 0) { p.unmake(); return WIN - ply - 1; }
+      const v = this.child(0, alpha, beta, ply + 1, side, true, qd + 1);
+      p.unmake();
+      if (this.stop) return 0;
+      if (v > best) {
+        best = v;
+        if (v > alpha) { alpha = v; if (v >= beta) break; }
+      }
+    }
+    if (evade && legal === 0) return -WIN + ply + 2;
+    return best;
+  }
+
+  adjGroup(s, g) {
+    const nb = NEI[s];
+    for (let i = 0; i < nb.length; i++) if (this.gid[nb[i]] === g) return true;
+    return false;
+  }
+
+  search(depth, alpha, beta, ply) {
+    const p = this.p;
+    if (this.timeUp()) return 0;
+    if (depth <= 0 || ply >= this.MAXPLY - 4) return this.qsearch(alpha, beta, ply, 0);
+    const side = p.side;
+
+    const pv = beta - alpha > 1;
+    let ttMove = 0;
+    const ti = this.ttProbe();
+    if (ti >= 0) {
+      ttMove = this.ttMove[ti];
+      if (!pv && ply > 0 && this.ttDepth[ti] >= depth) {
+        let sc = this.ttScore[ti];
+        if (sc > WIN - 1000) sc -= ply; else if (sc < -WIN + 1000) sc += ply;
+        const fl = this.ttFlag[ti];
+        if (fl === 1 || (fl === 2 && sc >= beta) || (fl === 3 && sc <= alpha)) return sc;
+      }
+    }
+    this.analyze();
+    const kg = p.kingSq >= 0 ? this.gid[p.kingSq] : -1;
+    const kl = kg >= 0 ? this.gLibs[kg] : 0;
+    // 玉の連が次の囲碁の手番で取られうるなら延長
+    if (side === SHOGI && kl <= p.perTurn && ply < this.rootDepth * 2) depth++;
+
+    const off = ply * 600;
+    const n = p.gen(this.moveBuf, off, 0);
+    this.orderMoves(off, n, ttMove, ply);
+
+    const alpha0 = alpha;
+    let best = -INF, bestMove = 0, searched = 0;
+    for (let i = off; i < off + n; i++) {
+      const m = this.pick(i, off + n);
+      const sc = this.scoreBuf[i];
+      const r = p.make(m);
+      if (r < 0) continue;
+      if (r > 0) {
+        p.unmake();
+        best = WIN - ply - 1; bestMove = m;
+        break;
+      }
+      const tactical = sc >= (1 << 20);
+      let v;
+      if (searched === 0) {
+        v = this.child(depth - 1, alpha, beta, ply + 1, side);
+      } else {
+        let red = 0;
+        if (depth >= 3 && searched >= 3 && !tactical) {
+          red = 1 + (searched >= 8 ? 1 : 0) + (depth >= 6 && searched >= 16 ? 1 : 0);
+          if (red > depth - 2) red = depth - 2;
+        }
+        v = this.child(depth - 1 - red, alpha, alpha + 1, ply + 1, side);
+        if (!this.stop && v > alpha && red > 0) v = this.child(depth - 1, alpha, alpha + 1, ply + 1, side);
+        if (!this.stop && v > alpha && v < beta) v = this.child(depth - 1, alpha, beta, ply + 1, side);
+      }
+      p.unmake();
+      if (this.stop) return 0;
+      searched++;
+      if (ply === 0 && (v > best || searched === 1)) { this.rootBest = m; this.rootScore = v; }
+      if (v > best) {
+        best = v; bestMove = m;
+        if (v > alpha) {
+          alpha = v;
+          if (v >= beta) {
+            if (!tactical) {
+              const kb = ply * 2;
+              if (this.killers[kb] !== m) { this.killers[kb + 1] = this.killers[kb]; this.killers[kb] = m; }
+              const hi = this.histIdx(m);
+              this.history[hi] += depth * depth * 16;
+              if (this.history[hi] > 1 << 22) for (let k = 0; k < this.history.length; k++) this.history[k] >>= 1;
+            }
+            break;
+          }
+        }
+      }
+    }
+    if (searched === 0 && best === -INF) {
+      // 指せる手が無い: 囲碁側の2つ目以降なら手番を終える、それ以外は負け
+      if (side === GO && p.left < p.perTurn) {
+        p.make(END_TURN);
+        const v = -this.search(depth - 1, -beta, -alpha, ply + 1);
+        p.unmake();
+        return v;
+      }
+      return -WIN + ply;
+    }
+    const flag = best >= beta ? 2 : best > alpha0 ? 1 : 3;
+    this.ttStore(depth, flag, best, bestMove, ply);
+    return best;
+  }
+
+  // 思考。timeMs ミリ秒で反復深化
+  think(timeMs, maxDepth, onInfo) {
+    const p = this.p;
+    this.nodes = 0; this.stop = false;
+    this.P = Object.assign({}, this.params, (this.params.bySide || [])[p.side] || {}, this.override || {});
+    const start = now();
+    this.deadline = start + timeMs;
+    this.killers.fill(0);
+    for (let k = 0; k < this.history.length; k++) this.history[k] >>= 2;
+    const legal = p.legalMoves();
+    if (legal.length === 0) return { move: 0, score: -WIN, depth: 0, nodes: 0 };
+    for (const m of legal) {
+      if (p.make(m) > 0) { p.unmake(); return { move: m, score: WIN, depth: 1, nodes: 1 }; }
+      p.unmake();
+    }
+    if (legal.length === 1) return { move: legal[0], score: 0, depth: 0, nodes: 1 };
+    let bestMove = legal[0], bestScore = 0, done = 0;
+    maxDepth = maxDepth || 40;
+    for (let d = 1; d <= maxDepth; d++) {
+      this.rootDepth = d;
+      this.rootBest = 0;
+      let v;
+      if (d >= 3 && Math.abs(bestScore) < WIN - 1000) {
+        const a = bestScore - 150, bb = bestScore + 150;
+        v = this.search(d, a, bb, 0);
+        if (!this.stop && (v <= a || v >= bb)) v = this.search(d, -INF, INF, 0);
+      } else {
+        v = this.search(d, -INF, INF, 0);
+      }
+      if (this.stop) {
+        if (this.rootBest && this.rootScore > bestScore) { bestMove = this.rootBest; bestScore = this.rootScore; }
+        break;
+      }
+      const ti = this.ttProbe();
+      bestMove = ti >= 0 && this.ttMove[ti] && legal.includes(this.ttMove[ti]) ? this.ttMove[ti] : (this.rootBest || bestMove);
+      bestScore = v; done = d;
+      if (onInfo) onInfo({ depth: d, score: v, nodes: this.nodes, time: now() - start });
+      if (Math.abs(v) >= WIN - 1000) break;
+      if (now() - start > timeMs * 0.5) break;
+    }
+    return { move: bestMove, score: bestScore, depth: done, nodes: this.nodes, time: now() - start };
+  }
+}
+
+const SG = {
+  Pos, Searcher, decode, goMove, PARAMS, VAL, WIN, HANDICAPS, STAR, DEFAULT_RULES, END_TURN,
+  EMPTY, K, R, B, G, S, N, L, P, PROM, STONE, SHOGI, GO, GO_FROM, ROW, COL, NEI, PROMOTABLE,
+};
+if (typeof module !== 'undefined' && module.exports) module.exports = SG;
+else root.SG = SG;
+})(typeof self !== 'undefined' ? self : this);
+
+</script>
+<script>
+(function () {
+'use strict';
+const E = window.SG;
+const { SHOGI, GO, STONE, K, PROM, END_TURN } = E;
+const KANJI = { 1: '玉', 2: '飛', 3: '角', 4: '金', 5: '銀', 6: '桂', 7: '香', 8: '歩', 10: '龍', 11: '馬', 13: '全', 14: '圭', 15: '杏', 16: 'と' };
+const RANK = '一二三四五六七八九';
+const FILE = '９８７６５４３２１';
+const MARK = ['▲', '●'];
+const SIDE_NAME = ['将棋', '囲碁'];
+const LEVELS = [
+  { ms: 1000, name: 'はやい', note: '約1秒' },
+  { ms: 3000, name: 'つよい', note: '約3秒' },
+  { ms: 7000, name: 'とてもつよい', note: '約7秒' },
+  { ms: 15000, name: '全力', note: '約15秒' },
+];
+// 手合い。互角は AI 同士の対局で将棋側と囲碁側の勝率がほぼ半々になる設定
+const HANDI = [
+  { k: 'even', label: '互角', note: '標準', rules: {} },
+  { k: 'lance', label: '香落ち', note: '囲碁側を少し助ける', rules: { handicap: 'lance' } },
+  { k: 'bishop', label: '角落ち', note: '囲碁側を助ける', rules: { handicap: 'bishop' } },
+  { k: 'stones2', label: '置き石2', note: '囲碁側を助ける', rules: { stones: 2 } },
+  { k: 'goal-5', label: '目標−5個', note: '将棋側を助ける', rules: { goalDelta: -5 } },
+  { k: 'goal-10', label: '目標−10個', note: '将棋側を大きく助ける', rules: { goalDelta: -10 } },
+];
+const SAVE_KEY = 'shogi-vs-go-v1';
+
+const $ = (s, el) => (el || document).querySelector(s);
+const h = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+
+function rulesFor(hk) {
+  const H = HANDI.find(x => x.k === hk) || HANDI[0];
+  const r = Object.assign({}, E.DEFAULT_RULES);
+  if (H.rules.handicap) r.handicap = H.rules.handicap;
+  if (H.rules.stones) r.stones = H.rules.stones;
+  if (H.rules.goalDelta) r.goal += H.rules.goalDelta;
+  return r;
+}
+
+// ---- 対局状態 ----
+const G = {
+  mode: 'ai',      // 'ai' | 'pvp'
+  human: SHOGI,    // AI対戦で人間が持つ側
+  level: 1,
+  handi: 'even',
+  pos: new E.Pos(),
+  snaps: [],       // 各局面 {state, label, side, move, gone, note}
+  over: null,      // {winner, reason}
+  sel: null,       // {kind:'piece'|'group', sq, targets?: Map(to -> [moves])}
+  ghost: -1,       // 囲碁側: 置く前の確認中の升
+  legal: [],
+  thinking: false, hinting: false,
+  info: null, hint: null, hintDepth: 0,
+  flip: false,
+  fresh: true,     // AI の置換表を消す（新しい対局）
+};
+
+function sqName(sq) { return FILE[sq % 9] + RANK[(sq / 9) | 0]; }
+const isPiece = c => c > 0 && c < STONE;
+
+function newGame(mode, human, level, handi) {
+  G.mode = mode; G.human = human; G.level = level; G.handi = handi;
+  G.pos = new E.Pos(rulesFor(handi));
+  G.snaps = [{ state: G.pos.serialize(), label: null, move: null, gone: [] }];
+  G.over = null; G.info = null; G.fresh = true;
+  G.flip = mode === 'ai' && human === GO;
+  cancelThink();
+  afterPosition();
+}
+
+function restorePos() { G.pos.load(G.snaps[G.snaps.length - 1].state); }
+
+function isHumanTurn() { return !G.over && (G.mode === 'pvp' || G.pos.side === G.human); }
+
+let autoTimer = 0;
+function afterPosition() {
+  G.sel = null; G.ghost = -1; G.hint = null;
+  clearTimeout(autoTimer);
+  const p = G.pos;
+  G.legal = G.over ? [] : p.legalMoves();
+  if (!G.over && G.legal.length === 0) {
+    G.over = { winner: p.side ^ 1, reason: p.side === GO ? '石を置ける場所がなくなりました' : '動かせる駒がなくなりました' };
+  }
+  save();
+  render();
+  if (G.over) return;
+  if (G.legal.length === 1 && G.legal[0] === END_TURN) {
+    // 2つ目の石を置ける場所がないときは手番を終える
+    autoTimer = setTimeout(() => play(END_TURN), 700);
+    return;
+  }
+  if (G.mode === 'ai' && p.side !== G.human) startThink();
+}
+
+// 1手指す
+function play(m) {
+  const p = G.pos, d = E.decode(m), mover = p.side;
+  const before = Array.from(p.board);
+  const capsBefore = p.caps;
+  const pc = d.go ? 0 : p.board[d.from];
+  const r = p.make(m);
+  if (r < 0) return;
+  p.usp = 0;
+  const gone = [];
+  for (let s = 0; s < 81; s++) if (before[s] && !p.board[s] && !(!d.go && s === d.from)) gone.push(s);
+  let label, note = '';
+  if (d.end) { label = '●置けずに手番終了'; }
+  else if (d.go) {
+    label = MARK[GO] + sqName(d.to);
+    const lost = gone.map(s => KANJI[before[s]]);
+    if (lost.length) note = lost.join('・') + 'を取る';
+  } else {
+    let canProm = E.PROMOTABLE[pc] && (E.ROW[d.from] <= 2 || E.ROW[d.to] <= 2);
+    label = MARK[SHOGI] + sqName(d.to) + KANJI[pc] + (d.prom ? '成' : canProm ? '不成' : '');
+    const got = p.caps - capsBefore;
+    if (got) note = `石を${got}つ取る`;
+    if (before[d.to] === STONE) gone.push(d.to);
+  }
+  G.snaps.push({ state: p.serialize(), label, side: mover, move: d.end ? null : d, gone, note });
+  if (r > 0) G.over = { winner: mover, reason: mover === SHOGI ? `石を${p.goal}個取りました` : '玉を囲んで取りました' };
+  else if (G.snaps.length > 800) G.over = { winner: -1, reason: '手数が上限に達しました' };
+  afterPosition();
+}
+
+// 手番の始まりか（待ったで戻る位置）
+function turnStart(i) {
+  const st = G.snaps[i].state;
+  return i === 0 || st.side === SHOGI || st.left === (st.rules.perTurn || 2);
+}
+
+function undo() {
+  if (G.snaps.length <= 1) return;
+  cancelThink();
+  clearTimeout(autoTimer);
+  if (G.mode === 'pvp') G.snaps.length -= 1;
+  else {
+    do { G.snaps.length -= 1; }
+    while (G.snaps.length > 1 && !(G.snaps[G.snaps.length - 1].state.side === G.human && turnStart(G.snaps.length - 1)));
+  }
+  G.over = null; G.info = null;
+  restorePos();
+  afterPosition();
+}
+
+// ---- AI ----
+let worker = null, workerFailed = false, thinkId = 0;
+function makeWorker() {
+  if (worker || workerFailed) return worker;
+  try {
+    const src = $('#sg-engine').textContent + '\n' + WORKER_GLUE;
+    const url = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
+    worker = new Worker(url);
+    worker.onmessage = onWorkerMessage;
+    worker.onerror = () => {
+      worker = null; workerFailed = true;
+      if (G.thinking) { G.thinking = false; startThink(); }
+      else if (G.hinting) { G.hinting = false; startThink('hint'); }
+    };
+  } catch (e) {
+    workerFailed = true; worker = null;
+  }
+  return worker;
+}
+const WORKER_GLUE = `
+let P = null, S = null;
+self.onmessage = function (e) {
+  const d = e.data;
+  if (!P) { P = new SG.Pos(); S = new SG.Searcher(P, 20); }
+  if (d.fresh) S.clearTT();
+  P.load(d.state);
+  S.setPos(P);
+  const r = S.think(d.time, 40, function (i) { self.postMessage({ type: 'info', id: d.id, kind: d.kind, info: { depth: i.depth, score: i.score } }); });
+  self.postMessage({ type: 'done', id: d.id, kind: d.kind, move: r.move, score: r.score, depth: r.depth });
+};`;
+
+let mainSearcher = null;
+function startThink(kind) {
+  if (G.thinking || G.hinting || G.over) return;
+  kind = kind || 'ai';
+  if (kind === 'hint') { G.hinting = true; G.hint = null; G.hintDepth = 0; } else { G.thinking = true; }
+  const id = ++thinkId;
+  const msg = {
+    id, kind, state: G.pos.serialize(), fresh: G.fresh,
+    time: kind === 'hint' ? Math.min(Math.max(LEVELS[G.level].ms, 2500), 5000) : LEVELS[G.level].ms,
+  };
+  G.fresh = false;
+  render();
+  const w = makeWorker();
+  if (w) { w.postMessage(msg); return; }
+  // Worker が使えない環境ではメインスレッドで考える
+  setTimeout(() => {
+    if (id !== thinkId) return;
+    const p = new E.Pos(); p.load(msg.state);
+    if (!mainSearcher) mainSearcher = new E.Searcher(p, 18); else mainSearcher.setPos(p);
+    if (msg.fresh) mainSearcher.clearTT();
+    const r = mainSearcher.think(Math.min(msg.time, 3000), 40);
+    onWorkerMessage({ data: { type: 'done', id, kind, move: r.move, score: r.score, depth: r.depth } });
+  }, 60);
+}
+function onWorkerMessage(e) {
+  const d = e.data;
+  if (d.id !== thinkId) return;
+  if (d.type === 'info') {
+    if (d.kind !== 'hint' && G.thinking) G.info = d.info;
+    if (G.hinting) G.hintDepth = d.info.depth;
+    renderStatus();
+    return;
+  }
+  if (d.kind === 'hint') {
+    G.hinting = false;
+    if (G.legal.includes(d.move)) G.hint = { move: d.move, score: d.score, depth: d.depth };
+    render();
+    return;
+  }
+  G.thinking = false;
+  G.info = { depth: d.depth, score: d.score, side: G.pos.side };
+  if (G.over || !G.legal.includes(d.move)) { render(); return; }
+  play(d.move);
+}
+function cancelThink() {
+  thinkId++;
+  if ((G.thinking || G.hinting) && worker) { worker.terminate(); worker = null; }
+  G.thinking = false;
+  G.hinting = false;
+}
+
+function requestHint() {
+  if (!isHumanTurn() || G.thinking || G.hinting) return;
+  if (G.hint) { G.hint = null; render(); return; } // もう一度押すと消す
+  G.sel = null; G.ghost = -1;
+  startThink('hint');
+}
+
+// ---- 盤面の読み取り（表示用） ----
+// 次の囲碁の手番で取られうる駒の連と、玉の連の呼吸点
+function threats() {
+  const p = G.pos, b = p.board;
+  const reach = p.side === GO ? p.left : p.perTurn;
+  const risk = new Set();
+  const seen = new Uint8Array(81);
+  let kingLibs = -1;
+  for (let s = 0; s < 81; s++) {
+    if (!isPiece(b[s]) || seen[s]) continue;
+    const g = p.groupInfo(s);
+    for (const c of g.cells) seen[c] = 1;
+    if (g.cells.includes(p.kingSq)) kingLibs = g.libs.length;
+    if (g.libs.length <= reach) for (const c of g.cells) risk.add(c);
+  }
+  return { risk, kingLibs, reach };
+}
+
+// 石を置いたらどうなるか
+function previewGo(sq) {
+  const p = G.pos, m = E.goMove(sq);
+  const before = Array.from(p.board);
+  const r = p.make(m);
+  if (r < 0) return null;
+  const lost = [];
+  for (let s = 0; s < 81; s++) if (isPiece(before[s]) && !p.board[s]) lost.push(KANJI[before[s]]);
+  // 隣の駒の連の呼吸点
+  const adj = [];
+  const seen = new Set();
+  for (const t of E.NEI[sq]) {
+    if (!isPiece(p.board[t]) || seen.has(t)) continue;
+    const g = p.groupInfo(t);
+    for (const c of g.cells) seen.add(c);
+    adj.push({ libs: g.libs.length, king: g.cells.includes(p.kingSq), n: g.cells.length });
+  }
+  const own = p.libertyCount(sq);
+  p.unmake();
+  return { lost, adj, own, win: r > 0 };
+}
+
+// ---- 保存 ----
+function snapshotData() { return { mode: G.mode, human: G.human, level: G.level, handi: G.handi, flip: G.flip, snaps: G.snaps, over: G.over }; }
+function save() {
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(snapshotData())); } catch (e) { /* 保存できない環境でも遊べる */ }
+}
+function loadSaved(data) {
+  try {
+    const o = data || JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (!o || !o.snaps || !o.snaps.length) return false;
+    G.mode = o.mode; G.human = o.human; G.level = o.level ?? 1; G.handi = o.handi || 'even'; G.flip = !!o.flip;
+    G.snaps = o.snaps; G.over = o.over || null;
+    restorePos();
+    return true;
+  } catch (e) { return false; }
+}
+
+// ---- 描画 ----
+function pieceEl(c, upright) {
+  // 将棋側が盤の上にいるとき（反転時）は駒を下向きにする
+  return h('div', 'piece' + (c > PROM ? ' prom' : '') + (G.flip && !upright ? ' down' : ''), KANJI[c]);
+}
+function stoneEl(cls) { return h('div', 'stone' + (cls ? ' ' + cls : '')); }
+
+function render() {
+  const p = G.pos, b = p.board;
+  const app = $('.app');
+  app.classList.toggle('t-shogi', p.side === SHOGI);
+  app.classList.toggle('t-go', p.side === GO);
+  const board = $('#board');
+  board.textContent = '';
+  const last = G.snaps[G.snaps.length - 1];
+  // 直前の手番の石（囲碁の2つ）と駒の動き
+  const newStones = new Set(), lastSq = new Set();
+  for (let i = G.snaps.length - 1; i > 0; i--) {
+    const s = G.snaps[i];
+    if (s.side !== last.side) break;
+    if (s.move && s.move.go) newStones.add(s.move.to);
+    else if (s.move) { lastSq.add(s.move.from); lastSq.add(s.move.to); }
+  }
+  const gone = new Set(last.gone || []);
+  const th = threats();
+  const sel = G.sel;
+  let grp = null;
+  if (sel && b[sel.sq]) grp = p.groupInfo(sel.sq);
+  const grpCells = new Set(grp ? grp.cells : []), grpLibs = new Set(grp ? grp.libs : []);
+  let hint = null;
+  if (G.hint) { const d = E.decode(G.hint.move); hint = d.end ? null : { from: d.go ? -1 : d.from, to: d.to }; }
+  for (let i = 0; i < 81; i++) {
+    const sq = G.flip ? 80 - i : i;
+    const c = h('button', 'cell');
+    c.type = 'button';
+    c.dataset.sq = sq;
+    const v = b[sq];
+    c.setAttribute('aria-label', sqName(sq) + (v === STONE ? ' 石' : isPiece(v) ? ' ' + KANJI[v] : ''));
+    if (lastSq.has(sq)) c.classList.add('last');
+    if (v === STONE) c.appendChild(stoneEl(newStones.has(sq) ? 'new drop' : ''));
+    else if (isPiece(v)) {
+      c.appendChild(pieceEl(v));
+      if (th.risk.has(sq)) c.classList.add('risk');
+    } else if (G.ghost === sq) c.appendChild(stoneEl('ghost'));
+    if (gone.has(sq) && !v) c.classList.add('gone');
+    if (sel) {
+      if (sel.kind === 'piece' && sel.sq === sq) c.classList.add('sel');
+      if (sel.kind === 'group' && grpCells.has(sq)) c.classList.add('grp');
+      if (grpLibs.has(sq) && sel.kind === 'group') c.classList.add('lib');
+      if (sel.targets && sel.targets.has(sq)) { c.classList.add('dest'); if (v) c.classList.add('cap'); }
+    }
+    if (hint) {
+      if (hint.to === sq) c.classList.add('hint-to');
+      if (hint.from === sq) c.classList.add('hint-from');
+    }
+    board.appendChild(c);
+  }
+  for (const [x, y] of [[3, 3], [6, 3], [3, 6], [6, 6]]) {
+    const st = h('i', 'star');
+    st.style.left = (x / 9 * 100) + '%'; st.style.top = (y / 9 * 100) + '%';
+    board.appendChild(st);
+  }
+  $('#files').textContent = '';
+  for (let i = 0; i < 9; i++) $('#files').appendChild(h('span', '', String(G.flip ? i + 1 : 9 - i)));
+  $('#ranks').textContent = '';
+  for (let i = 0; i < 9; i++) $('#ranks').appendChild(h('span', '', RANK[G.flip ? 8 - i : i]));
+  renderPanel($('#panel-top'), G.flip ? SHOGI : GO, th);
+  renderPanel($('#panel-bottom'), G.flip ? GO : SHOGI, th);
+  renderStatus(th);
+  renderInfo(th);
+  renderLog();
+  $('#undo').disabled = G.snaps.length <= 1;
+  const hb = $('#hint');
+  hb.disabled = !isHumanTurn() || G.thinking || G.hinting;
+  hb.textContent = G.hinting ? '考え中…' : G.hint ? 'ヒントを消す' : 'ヒント';
+  hb.classList.toggle('on', !!G.hint);
+  if (G.over && !G.shownOver) { G.shownOver = true; showResult(); }
+  if (!G.over) G.shownOver = false;
+}
+
+function playerName(side) {
+  if (G.mode === 'pvp') return '';
+  return side === G.human ? 'あなた' : 'AI';
+}
+
+function renderPanel(el, side, th) {
+  const p = G.pos;
+  el.textContent = '';
+  el.classList.toggle('on', !G.over && p.side === side);
+  const who = h('div', 'who');
+  if (side === SHOGI) who.appendChild(h('span', 'mini-piece'));
+  else who.appendChild(h('span', 'mini-stone'));
+  who.appendChild(h('span', '', SIDE_NAME[side]));
+  const tag = playerName(side);
+  if (tag) who.appendChild(h('span', 'tag', tag));
+  el.appendChild(who);
+  const body = h('div', 'body');
+  if (side === SHOGI) {
+    const l1 = h('div', 'line');
+    l1.append('取った石 ');
+    const bb = h('b', '', `${p.caps}`); l1.appendChild(bb);
+    l1.append(` / ${p.goal}`);
+    const pr = h('span', 'progress'); const bar = h('i'); bar.style.width = Math.min(100, p.caps / p.goal * 100) + '%'; pr.appendChild(bar);
+    l1.appendChild(pr);
+    body.appendChild(l1);
+    const l2 = h('div', 'line' + (th.kingLibs >= 0 && th.kingLibs <= th.reach ? ' warn' : ''));
+    l2.append('玉の呼吸点 ');
+    l2.appendChild(h('b', '', th.kingLibs >= 0 ? String(th.kingLibs) : '―'));
+    if (th.kingLibs >= 0 && th.kingLibs <= th.reach) l2.append('（次で囲まれる）');
+    body.appendChild(l2);
+  } else {
+    const l1 = h('div', 'line');
+    l1.append('取った駒 ');
+    const dd = h('span', 'dead');
+    let any = false;
+    for (const t of [2, 3, 4, 5, 6, 7, 8]) {
+      for (let k = 0; k < p.dead[t]; k++) { dd.appendChild(h('span', '', KANJI[t])); any = true; }
+    }
+    if (!any) dd.appendChild(document.createTextNode('なし'));
+    l1.appendChild(dd);
+    body.appendChild(l1);
+    const l2 = h('div', 'line');
+    l2.append('盤上の石 ');
+    l2.appendChild(h('b', '', String(p.stones)));
+    l2.append(`　1手番に${p.perTurn}つ置く`);
+    body.appendChild(l2);
+  }
+  el.appendChild(body);
+  if (side === GO && p.side === GO && !G.over) {
+    const sl = h('span', 'stones-left');
+    sl.title = 'この手番で置ける残りの石';
+    const total = turnTotal();
+    for (let i = 0; i < total; i++) sl.appendChild(h('i', i < p.left ? 'full' : ''));
+    el.appendChild(sl);
+  }
+}
+// この手番に置ける石の数
+function turnTotal() {
+  const p = G.pos;
+  for (let i = G.snaps.length - 1; i >= 0; i--) {
+    const st = G.snaps[i].state;
+    if (st.side !== GO) break;
+    if (turnStart(i)) return st.left;
+  }
+  return p.perTurn;
+}
+
+function renderStatus(th) {
+  const p = G.pos;
+  th = th || threats();
+  const pill = $('#turn');
+  const msg = $('#msg');
+  msg.classList.remove('alert');
+  if (G.over) {
+    pill.textContent = '終局';
+    pill.className = 'turn-pill';
+    msg.textContent = G.over.reason;
+  } else {
+    const mine = G.mode === 'ai' ? (p.side === G.human ? '（あなた）' : '（AI）') : '';
+    pill.textContent = MARK[p.side] + SIDE_NAME[p.side] + mine;
+    pill.className = 'turn-pill' + (isHumanTurn() ? ' mine' : '');
+    if (G.hinting) msg.textContent = 'おすすめの手を探しています…' + (G.hintDepth ? `（${G.hintDepth}手先まで）` : '');
+    else if (G.thinking) msg.textContent = 'AI が読んでいます…' + (G.info && G.info.depth ? `（${G.info.depth}手先まで）` : '');
+    else if (!isHumanTurn()) msg.textContent = '';
+    else if (p.side === SHOGI) {
+      if (th.kingLibs >= 0 && th.kingLibs <= p.perTurn) { msg.textContent = `玉の呼吸点が残り${th.kingLibs}。次の手番で囲まれます`; msg.classList.add('alert'); }
+      else if (G.sel && G.sel.kind === 'piece') msg.textContent = '動かす先を選んでください';
+      else msg.textContent = '駒を選んでください';
+    } else {
+      if (G.ghost >= 0) msg.textContent = 'もう一度タップすると置きます';
+      else msg.textContent = `石を置く升をタップ（あと${p.left}つ）`;
+    }
+  }
+  // 形勢メーター（あなたから見た評価）
+  const meter = $('#meter > i');
+  let pct = 50;
+  if (G.info && G.info.score != null && G.mode === 'ai') {
+    let sc = G.info.side === G.human ? G.info.score : -G.info.score;
+    if (Math.abs(sc) > 900000) sc = sc > 0 ? 3000 : -3000;
+    pct = 50 + 50 * Math.tanh(sc / 1500);
+  }
+  meter.style.width = pct.toFixed(1) + '%';
+  $('#meter').hidden = G.mode !== 'ai';
+  $('#meter').title = 'あなたから見た形勢（AIの読み）';
+}
+
+function describeMove(m) {
+  const p = G.pos, d = E.decode(m);
+  if (d.end) return { mark: '手番終了', where: '置ける場所がありません' };
+  if (d.go) {
+    const pv = previewGo(d.to);
+    let where = `${sqName(d.to)}に石を置く`;
+    if (pv && pv.lost.length) where += `（${pv.lost.join('・')}を取る）`;
+    return { mark: MARK[GO] + sqName(d.to), where };
+  }
+  const pc = p.board[d.from], tgt = p.board[d.to];
+  return {
+    mark: MARK[SHOGI] + sqName(d.to) + KANJI[pc] + (d.prom ? '成' : ''),
+    where: `${sqName(d.from)}の${KANJI[pc]}を${sqName(d.to)}へ` + (tgt === STONE ? '（石を取る）' : ''),
+  };
+}
+
+function renderInfo(th) {
+  const box = $('#info');
+  box.textContent = '';
+  const p = G.pos, b = p.board;
+  if (G.hint && !G.sel && G.ghost < 0) {
+    const d = describeMove(G.hint.move);
+    const r1 = h('div', 'row');
+    r1.appendChild(h('span', 'hint-tag', 'おすすめ'));
+    r1.appendChild(h('span', 'hint-move', d.mark));
+    r1.appendChild(h('span', 'label', d.where));
+    box.appendChild(r1);
+    const r2 = h('div', 'row');
+    const sc = G.hint.score;
+    let verdict;
+    if (sc > 900000) verdict = 'この手で勝ちが見えています';
+    else if (sc < -900000) verdict = '苦しい局面です。いちばん粘れる手を選びました';
+    else verdict = `${G.hint.depth}手先まで読んだ結果です`;
+    r2.appendChild(h('span', 'label', verdict));
+    const go = h('button', 'btn primary small', 'この手を指す');
+    go.type = 'button';
+    go.onclick = () => { if (G.hint && isHumanTurn()) play(G.hint.move); };
+    r2.appendChild(go);
+    box.appendChild(r2);
+    return;
+  }
+  if (G.ghost >= 0) {
+    const pv = previewGo(G.ghost);
+    const r = h('div', 'row');
+    r.appendChild(h('span', 'chip', sqName(G.ghost)));
+    if (pv.win) r.appendChild(h('span', 'chip warn', '玉を取って勝ち'));
+    else if (pv.lost.length) r.appendChild(h('span', 'label', `${pv.lost.join('・')}を取ります`));
+    else {
+      const parts = pv.adj.map(a => `${a.king ? '玉の連' : '隣の駒'}の呼吸点 ${a.libs}`);
+      r.appendChild(h('span', 'label', parts.length ? parts.join('　') : '置いた石の呼吸点 ' + pv.own));
+    }
+    box.appendChild(r);
+    const r2 = h('div', 'row');
+    r2.appendChild(h('span', 'label', '同じ升をもう一度タップで置きます。別の升を選び直せます。'));
+    box.appendChild(r2);
+    return;
+  }
+  if (G.sel && b[G.sel.sq]) {
+    const g = p.groupInfo(G.sel.sq);
+    const v = b[G.sel.sq];
+    const r = h('div', 'row');
+    if (v === STONE) {
+      r.appendChild(h('span', 'label', `石の連 ${g.cells.length}個`));
+      r.appendChild(h('span', 'label', '呼吸点'));
+      r.appendChild(h('b', '', String(g.libs.length)));
+      box.appendChild(r);
+      const r2 = h('div', 'row');
+      r2.appendChild(h('span', 'label', g.libs.length === 1 ? '最後の呼吸点を駒でふさぐと、連ごと取れます' : '○の升（呼吸点）を駒で全部ふさぐと、連ごと取れます'));
+      box.appendChild(r2);
+    } else {
+      const inKing = g.cells.includes(p.kingSq);
+      r.appendChild(h('span', 'label', `${inKing ? '玉を含む' : ''}駒の連 ${g.cells.length}枚`));
+      r.appendChild(h('span', 'label', '呼吸点'));
+      const warn = g.libs.length <= th.reach;
+      r.appendChild(h('b', warn ? 'chip warn' : '', String(g.libs.length)));
+      box.appendChild(r);
+      const r2 = h('div', 'row');
+      let t;
+      if (warn) t = `次の囲碁の手番（${th.reach}つ置く）で囲まれて取られます`;
+      else if (G.sel.kind === 'piece') t = G.sel.targets.size ? '点の升へ動けます。石の上に動くと石を取ります' : 'この駒は今動けません';
+      else t = '○の升（呼吸点）を石で全部ふさぐと、連ごと取れます';
+      r2.appendChild(h('span', 'label', t));
+      box.appendChild(r2);
+    }
+    return;
+  }
+  const r = h('div', 'row');
+  if (G.over) r.appendChild(h('span', 'label', '盤の駒や石をタップすると、連と呼吸点を確かめられます。'));
+  else if (p.side === SHOGI) r.appendChild(h('span', 'label', `将棋側は石を${p.goal}個取れば勝ち。赤い点の駒は、次の囲碁の手番で囲まれて取られます。`));
+  else r.appendChild(h('span', 'label', `囲碁側は玉を囲んで取れば勝ち。1手番に石を${p.perTurn}つ置きます。駒をタップすると呼吸点が見えます。`));
+  box.appendChild(r);
+}
+
+function renderLog() {
+  const ol = $('#log-list');
+  ol.textContent = '';
+  for (let i = 1; i < G.snaps.length; i++) {
+    const s = G.snaps[i];
+    const li = h('li');
+    li.appendChild(h('span', 'm ' + (s.side === SHOGI ? 's' : 'g'), s.label));
+    if (s.note) li.appendChild(h('span', 'q', '　' + s.note));
+    ol.appendChild(li);
+  }
+  $('#log-count').textContent = String(G.snaps.length - 1);
+  ol.scrollTop = ol.scrollHeight;
+}
+
+// ---- 操作 ----
+function selectPiece(sq) {
+  const targets = new Map();
+  for (const m of G.legal) {
+    if (m === END_TURN || (m & 127) !== sq) continue;
+    const to = (m >> 7) & 127;
+    if (!targets.has(to)) targets.set(to, []);
+    targets.get(to).push(m);
+  }
+  G.sel = { kind: 'piece', sq, targets };
+  render();
+}
+
+function onBoardTap(sq) {
+  const p = G.pos, v = p.board[sq];
+  const myTurn = isHumanTurn() && !G.thinking;
+  if (myTurn && p.side === SHOGI) {
+    if (G.sel && G.sel.targets && G.sel.targets.has(sq)) { chooseMove(G.sel.targets.get(sq)); return; }
+    if (isPiece(v)) {
+      if (G.sel && G.sel.sq === sq) { G.sel = null; render(); return; }
+      selectPiece(sq);
+      return;
+    }
+  }
+  if (myTurn && p.side === GO && !v) {
+    G.sel = null;
+    const m = E.goMove(sq);
+    if (!G.legal.includes(m)) {
+      G.ghost = -1; render();
+      const msg = $('#msg'); msg.textContent = 'そこは呼吸点のない升なので置けません（自殺手）'; msg.classList.add('alert');
+      return;
+    }
+    if (G.ghost === sq) { play(m); return; }
+    G.ghost = sq; G.hint = null;
+    render();
+    return;
+  }
+  // 連と呼吸点を見る（いつでも）
+  G.ghost = -1;
+  if (v) {
+    if (G.sel && G.sel.sq === sq && G.sel.kind === 'group') G.sel = null;
+    else G.sel = { kind: 'group', sq };
+  } else G.sel = null;
+  render();
+}
+
+function chooseMove(moves) {
+  if (moves.length === 1) { play(moves[0]); return; }
+  const p = G.pos;
+  const sheet = openSheet();
+  sheet.appendChild(h('h2', '', '成りますか？'));
+  const box = h('div', 'prom-choice');
+  for (const m of [...moves].sort((a, b) => ((b >> 14) & 1) - ((a >> 14) & 1))) {
+    const d = E.decode(m), pc = p.board[d.from];
+    const b = h('button', 'opt');
+    b.type = 'button';
+    b.appendChild(h('b', '', d.prom ? '成る' : '成らない'));
+    b.appendChild(h('span', 'chars' + (d.prom ? ' p' : ''), KANJI[d.prom ? pc + PROM : pc]));
+    b.onclick = () => { closeSheet(); play(m); };
+    box.appendChild(b);
+  }
+  sheet.appendChild(box);
+  const cancel = h('button', 'btn', 'やめる');
+  cancel.type = 'button';
+  cancel.onclick = closeSheet;
+  const act = h('div', 'actions'); act.appendChild(cancel); sheet.appendChild(act);
+}
+
+// ---- ダイアログ ----
+function openSheet() {
+  closeSheet();
+  const bg = h('div', 'sheet-bg');
+  bg.id = 'sheet-bg';
+  const sh = h('div', 'sheet');
+  sh.setAttribute('role', 'dialog');
+  bg.appendChild(sh);
+  bg.addEventListener('click', e => { if (e.target === bg) closeSheet(); });
+  document.body.appendChild(bg);
+  return sh;
+}
+function closeSheet() { const b = $('#sheet-bg'); if (b) b.remove(); }
+
+function showNewGame() {
+  const sh = openSheet();
+  sh.appendChild(h('h2', '', '新しい対局'));
+  let level = G.level, handi = G.handi;
+  const modes = [
+    { k: 'ai0', cls: 's', label: '将棋側で指す', note: '駒で石を取る（AIは囲碁）' },
+    { k: 'ai1', cls: 'g', label: '囲碁側で打つ', note: '石で玉を囲む（AIは将棋）' },
+    { k: 'pvp', cls: '', label: '2人で対戦', note: '1台のスマホで交互に' },
+  ];
+  let cur = G.mode === 'pvp' ? 'pvp' : 'ai' + G.human;
+  sh.appendChild(h('h3', '', '対戦相手'));
+  const mo = h('div', 'opts'), lv = h('div', 'opts'), hd = h('div', 'opts');
+  const lvTitle = h('h3', '', 'AIの強さ（考える時間）');
+  const draw = () => {
+    mo.textContent = ''; lv.textContent = ''; hd.textContent = '';
+    for (const m of modes) {
+      const b = h('button', 'opt ' + m.cls + (cur === m.k ? ' on' : ''));
+      b.type = 'button';
+      b.appendChild(h('b', '', m.label)); b.appendChild(h('small', '', m.note));
+      b.onclick = () => { cur = m.k; draw(); };
+      mo.appendChild(b);
+    }
+    LEVELS.forEach((L, i) => {
+      const b = h('button', 'opt' + (level === i ? ' on' : ''));
+      b.type = 'button';
+      b.appendChild(h('b', '', L.name)); b.appendChild(h('small', '', L.note));
+      b.onclick = () => { level = i; draw(); };
+      lv.appendChild(b);
+    });
+    for (const H of HANDI) {
+      const b = h('button', 'opt' + (handi === H.k ? ' on' : ''));
+      b.type = 'button';
+      b.appendChild(h('b', '', H.label)); b.appendChild(h('small', '', H.note));
+      b.onclick = () => { handi = H.k; draw(); };
+      hd.appendChild(b);
+    }
+    lvTitle.hidden = lv.hidden = cur === 'pvp';
+  };
+  draw();
+  sh.appendChild(mo); sh.appendChild(lvTitle); sh.appendChild(lv);
+  sh.appendChild(h('h3', '', '手合い'));
+  sh.appendChild(hd);
+  const act = h('div', 'actions');
+  const c = h('button', 'btn', 'キャンセル'); c.type = 'button'; c.onclick = closeSheet;
+  const ok = h('button', 'btn primary', '対局開始'); ok.type = 'button';
+  ok.onclick = () => {
+    closeSheet();
+    if (cur === 'pvp') newGame('pvp', SHOGI, level, handi); else newGame('ai', cur === 'ai1' ? GO : SHOGI, level, handi);
+  };
+  act.appendChild(c); act.appendChild(ok); sh.appendChild(act);
+}
+
+function fig(cells, cap) {
+  const w = h('div');
+  w.style.display = 'flex'; w.style.flexDirection = 'column'; w.style.alignItems = 'center'; w.style.gap = '4px';
+  const f = h('div', 'fig');
+  for (const x of cells) {
+    const s = h('span');
+    if (x === '●') s.appendChild(stoneEl(''));
+    else if (x !== '・') s.appendChild(pieceEl(+Object.keys(KANJI).find(k => KANJI[k] === x), true));
+    f.appendChild(s);
+  }
+  w.appendChild(f);
+  w.appendChild(h('div', 'cap', cap));
+  return w;
+}
+
+function showRules() {
+  const p = G.pos;
+  const sh = openSheet();
+  sh.appendChild(h('h2', '', '将棋対囲碁のルール'));
+  sh.appendChild(h('p', '', '9×9の盤で、駒を動かす将棋側と、石を置く囲碁側が戦います。将棋盤の81升は9路盤の81か所と同じ数なので、石は升の中に置きます。'));
+  const figs = h('div', 'rules-fig');
+  figs.appendChild(fig(['・', '●', '・', '・', '銀', '・', '・', '・', '・'], '駒は石の上に動いて石を取る'));
+  figs.appendChild(fig(['・', '●', '・', '●', '歩', '●', '・', '●', '・'], '石は駒を囲んで取る'));
+  sh.appendChild(figs);
+  sh.insertAdjacentHTML('beforeend', `
+    <h3>将棋側（駒）</h3>
+    <ul>
+      <li>駒の並べ方・動き・成りは将棋と同じです。</li>
+      <li>石のある升へ動くと、その石を取ります。石は飛び越えられません（桂馬は跳べます）。</li>
+      <li>取った石は持ち駒になりません。数を数えるだけです。</li>
+    </ul>
+    <h3>囲碁側（石）</h3>
+    <ul>
+      <li>囲碁側から始めます。空いている升に石を置きます。<b>1回の手番に石を${p.perTurn}つ</b>置きます（最初の手番だけ1つ）。</li>
+      <li>上下左右につながった石や駒は「連」になります。連のとなりの空き升が「呼吸点」です。</li>
+      <li>石を置いて、駒の連の呼吸点をすべてふさぐと、その連の駒をまとめて取ります。</li>
+    </ul>
+    <h3>両方に共通（囲碁のルール）</h3>
+    <ul>
+      <li>将棋側も、駒で石の連の呼吸点をすべてふさげば、その石をまとめて取れます。</li>
+      <li>自分の連の呼吸点がなくなる手（自殺手）は指せません。ただし相手の連を取れる場合は指せます。</li>
+    </ul>
+    <h3>勝ち負け</h3>
+    <ul>
+      <li><b>囲碁側の勝ち</b>：玉を取る（玉を含む駒の連を囲む）。</li>
+      <li><b>将棋側の勝ち</b>：石を<b>${p.goal}個</b>取る。</li>
+      <li>動かせる駒・置ける升がなくなった側の負けです。王手の決まりはありません。</li>
+    </ul>
+    <h3>互角にするための調整</h3>
+    <ul>
+      <li>元のルールのままだと、駒が毎手石を1つ取れる将棋側が圧倒的に有利でした。そこで囲碁側は1手番に石を2つ置き、将棋側の勝ちに必要な石の数を決めています。</li>
+      <li>この2つは、AI同士を何十局も対局させて、勝率がほぼ半々になるように選びました。</li>
+    </ul>
+    <h3>画面の見方</h3>
+    <ul>
+      <li>赤い点の駒は、次の囲碁の手番で囲まれて取られる駒です。</li>
+      <li>駒や石をタップすると、その連と呼吸点（○）が表示されます。</li>
+      <li>囲碁側は、升を1回タップで仮置き、もう1回タップで置きます。</li>
+    </ul>`);
+  const act = h('div', 'actions');
+  const c = h('button', 'btn primary', '閉じる'); c.type = 'button'; c.onclick = closeSheet;
+  act.appendChild(c); sh.appendChild(act);
+}
+
+function showResult() {
+  const sh = openSheet();
+  const o = G.over;
+  let text, cls = 'result';
+  if (o.winner < 0) text = '引き分け';
+  else if (G.mode === 'ai') { const w = o.winner === G.human; text = w ? 'あなたの勝ち' : 'AIの勝ち'; cls += w ? ' win' : ' lose'; }
+  else text = SIDE_NAME[o.winner] + '側の勝ち';
+  sh.appendChild(h('div', cls, text));
+  sh.appendChild(h('p', '', o.reason + `（${G.snaps.length - 1}手）`));
+  const act = h('div', 'actions');
+  const u = h('button', 'btn', '待った'); u.type = 'button'; u.onclick = () => { closeSheet(); undo(); };
+  const c = h('button', 'btn', '盤を見る'); c.type = 'button'; c.onclick = closeSheet;
+  const n = h('button', 'btn primary', 'もう一局'); n.type = 'button'; n.onclick = () => { closeSheet(); showNewGame(); };
+  act.appendChild(u); act.appendChild(c); act.appendChild(n); sh.appendChild(act);
+}
+
+// ---- 起動 ----
+function layout() {
+  const w = $('#board').getBoundingClientRect().width;
+  if (w > 0) document.documentElement.style.setProperty('--cell', (w / 9).toFixed(2) + 'px');
+}
+
+function start(data) {
+  $('#board').addEventListener('click', e => {
+    const c = e.target.closest('.cell');
+    if (c) onBoardTap(+c.dataset.sq);
+  });
+  $('#new').onclick = showNewGame;
+  $('#rules').onclick = showRules;
+  $('#undo').onclick = undo;
+  $('#hint').onclick = requestHint;
+  $('#flip').onclick = () => { G.flip = !G.flip; render(); };
+  window.addEventListener('resize', layout);
+  if (loadSaved(data && data.game)) afterPosition();
+  else newGame('ai', SHOGI, 1, 'even');
+  layout();
+  if (window.claude && window.claude.hot && window.claude.hot.snapshot) {
+    window.claude.hot.snapshot(() => ({ game: snapshotData() }));
+  }
+}
+
+const hot = window.claude && window.claude.hot;
+if (hot && hot.ready) hot.ready(start); else start((hot && hot.data) || {});
+})();
+
+</script>
